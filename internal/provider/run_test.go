@@ -11,12 +11,12 @@ import (
 // Run wait for the grandchild: the dashboard's scan holds the engine lock
 // meanwhile.
 func TestRunDoesNotWaitForAGrandchildHoldingThePipe(t *testing.T) {
-	old := waitDelay
-	waitDelay = 200 * time.Millisecond
-	defer func() { waitDelay = old }()
-
 	start := time.Now()
-	out, err := Run(context.Background(), "sh", "-c", "sleep 30 & echo done")
+	out, err := RunCommand(context.Background(), Command{
+		Name:      "sh",
+		Args:      []string{"-c", "sleep 30 & echo done"},
+		WaitDelay: 200 * time.Millisecond,
+	})
 	if err != nil {
 		t.Fatalf("a command that succeeded must not fail: %v", err)
 	}

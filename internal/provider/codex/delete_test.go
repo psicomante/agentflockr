@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/psicomante/agentflockr/internal/session"
 )
@@ -68,5 +69,37 @@ func TestCodexRefusesCachedTranscriptFromAnotherHome(t *testing.T) {
 	s := session.Session{Provider: session.Codex, ID: testUUID, Transcript: filepath.Join(t.TempDir(), "sessions", "rollout.jsonl")}
 	if err := d.Delete(context.Background(), s); err == nil {
 		t.Fatal("accepted another provider home")
+	}
+}
+
+// codex can exit while a child it started still holds the output pipe. The
+// delete must not wait for that child, and a delete that failed must still
+// fail.
+func TestCodexDeletionDoesNotWaitForAChildHoldingThePipe(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		exit    string
+		wantErr bool
+	}{
+		{name: "success", exit: "exit 0", wantErr: false},
+		{name: "failure", exit: "exit 3", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tools := t.TempDir()
+			code := "#!/bin/sh\nsleep 30 &\n" + tc.exit + "\n"
+			if err := os.WriteFile(filepath.Join(tools, "codex"), []byte(code), 0700); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
+			d := &Adapter{Home: t.TempDir(), WaitDelay: 200 * time.Millisecond}
+			start := time.Now()
+			err := d.Delete(context.Background(), session.Session{Provider: session.Codex, ID: testUUID})
+			if elapsed := time.Since(start); elapsed > 10*time.Second {
+				t.Fatalf("Delete waited %s for the child", elapsed)
+			}
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Delete error = %v, want an error: %v", err, tc.wantErr)
+			}
+		})
 	}
 }

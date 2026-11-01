@@ -20,6 +20,9 @@ type Adapter struct {
 	StaleAfter time.Duration
 	// Run executes native deletion. Nil runs codex with CODEX_HOME set to Home.
 	Run provider.Runner
+	// WaitDelay bounds the wait for codex's output pipes once it exits; zero
+	// means provider.DefaultWaitDelay. Tests shorten it.
+	WaitDelay time.Duration
 	// RunCommand reads the model catalogue, a command with its own
 	// environment (CODEX_HOME). Nil runs it for real; tests substitute it.
 	RunCommand func(context.Context, provider.Command) ([]byte, error)

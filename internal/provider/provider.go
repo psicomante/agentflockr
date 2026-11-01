@@ -84,6 +84,9 @@ type Command struct {
 	Env []string
 	// Unset names variables to drop from the inherited environment.
 	Unset []string
+	// WaitDelay bounds the wait for output pipes once the command exits or is
+	// cancelled, when RunCommand runs it; zero means DefaultWaitDelay.
+	WaitDelay time.Duration
 	// Created is a session the agent created before the command runs, such
 	// as an OpenCode session made with the chosen model. It is kept even if
 	// the command fails, so the dashboard says so.
@@ -130,12 +133,12 @@ func (c Command) environment(inherited []string) []string {
 // one so tests can substitute provider responses.
 type Runner func(context.Context, string, ...string) ([]byte, error)
 
-// waitDelay is how long RunCommand waits for a command's output pipes to
-// close once the command has exited or been cancelled. A child that leaves a
-// grandchild holding a pipe (an OpenCode server it started, say) would
-// otherwise block Run until the grandchild exits. A variable so a test can
-// shorten it.
-var waitDelay = 5 * time.Second
+// DefaultWaitDelay is how long a command's output pipes may stay open once the
+// command has exited or been cancelled. A child that leaves a grandchild
+// holding a pipe (an OpenCode server it started, say) would otherwise block
+// until the grandchild exits. Command.WaitDelay and the Codex adapter's
+// WaitDelay override it; zero means this value.
+const DefaultWaitDelay = 5 * time.Second
 
 func Run(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return RunCommand(ctx, Command{Name: name, Args: args})
@@ -152,7 +155,10 @@ func RunCommand(ctx context.Context, c Command) ([]byte, error) {
 	stdout := NewLimitedBuffer(MaxOutputSize, cancel)
 	cmd.Stderr = stderr
 	cmd.Stdout = stdout
-	cmd.WaitDelay = waitDelay
+	cmd.WaitDelay = c.WaitDelay
+	if cmd.WaitDelay == 0 {
+		cmd.WaitDelay = DefaultWaitDelay
+	}
 	err := cmd.Run()
 	// The command succeeded but something it started still held a pipe: its
 	// own output is complete, so this is not a failure.

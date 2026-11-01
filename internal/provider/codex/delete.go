@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -65,7 +66,17 @@ func (a *Adapter) run(ctx context.Context, name string, args ...string) ([]byte,
 	}
 	combined := provider.NewLimitedBuffer(provider.MaxOutputSize, cancel)
 	cmd.Stdout, cmd.Stderr = combined, combined
+	cmd.WaitDelay = a.WaitDelay
+	if cmd.WaitDelay == 0 {
+		cmd.WaitDelay = provider.DefaultWaitDelay
+	}
 	err := cmd.Run()
+	// codex exited, but something it started still held its output pipe. Go
+	// reports this only when codex exited with status 0, so the output is
+	// complete. Delete then checks that the transcript is gone.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
+	}
 	out := combined.Bytes()
 	if combined.Exceeded() {
 		return nil, fmt.Errorf("%s deletion: output exceeds %d bytes", name, provider.MaxOutputSize)
