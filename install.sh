@@ -23,6 +23,13 @@ download() {
 main() {
     repo=psicomante/agentflockr
     version=${AGENTFLOCKR_VERSION:-latest}
+    # Tags are v0.2.0; 0.2.0 is accepted too. Nothing else may reach the URL.
+    case "$version" in
+        latest) ;;
+        *[!A-Za-z0-9._+-]*) fail "AGENTFLOCKR_VERSION is not a release tag: $version" ;;
+        v*) ;;
+        *) version=v$version ;;
+    esac
     install_dir=${AGENTFLOCKR_INSTALL_DIR:-${HOME:?HOME must be set}/.local/bin}
 
     case "$(uname -s)" in
