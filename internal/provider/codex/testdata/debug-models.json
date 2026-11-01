@@ -1,0 +1,25 @@
+{
+  "models": [
+    {
+      "slug": "gpt-test-large",
+      "display_name": "GPT Test Large",
+      "visibility": "list",
+      "default_reasoning_level": "medium",
+      "supported_reasoning_levels": [{"effort": "low"}, {"effort": "medium"}, {"effort": "high"}]
+    },
+    {
+      "slug": "gpt-test-internal",
+      "display_name": "Internal Review",
+      "visibility": "hide",
+      "default_reasoning_level": "low",
+      "supported_reasoning_levels": [{"effort": "low"}]
+    },
+    {
+      "slug": "gpt-test-small",
+      "display_name": "",
+      "visibility": "list",
+      "default_reasoning_level": "low",
+      "supported_reasoning_levels": []
+    }
+  ]
+}
