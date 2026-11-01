@@ -57,8 +57,9 @@ func (m *Model) View() tea.View {
 	v.AltScreen = true
 	v.WindowTitle = "agentflockr"
 	if m.mode == browsing || m.mode == searching {
-		// Mouse capture gives wheel scrolling and clicks; most terminals still
-		// select text with Shift or Option held.
+		// Mouse capture gives wheel scrolling, clicks and the details pane's
+		// own selection (select.go); most terminals still select anywhere
+		// with Shift or Option held.
 		v.MouseMode = tea.MouseModeCellMotion
 	}
 	return v
@@ -99,6 +100,7 @@ func (m *Model) dashboard(p palette) []string {
 	list := m.list(p, l)
 	if l.detailWidth > 0 {
 		details := m.details(p, l.detailWidth, l.listHeight)
+		m.highlight(details, l.detailWidth)
 		bar := m.scrollbar(p, l.listHeight)
 		for i := range list {
 			list[i] += " " + bar[i] + " " + details[i]

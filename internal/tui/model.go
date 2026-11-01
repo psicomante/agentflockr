@@ -92,6 +92,7 @@ type Model struct {
 	mode          mode
 	input         textinput.Model
 	notice        string
+	sel           selection // text dragged over in the details pane
 	scanning      bool
 	opening       string // the agent being opened, while it has the terminal
 	viaTmux       bool   // the open moved to an existing tmux pane
@@ -380,6 +381,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode != browsing && m.mode != searching {
 			return m, nil
 		}
+		m.sel = selection{}
 		switch msg.Button {
 		case tea.MouseWheelDown:
 			return m, m.move(1)
@@ -391,11 +393,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Button != tea.MouseLeft || (m.mode != browsing && m.mode != searching) {
 			return m, nil
 		}
+		m.sel = selection{}
+		if m.pressDetails(msg.X, msg.Y) {
+			return m, nil
+		}
 		return m, m.click(msg.X, msg.Y)
+	case tea.MouseMotionMsg:
+		if msg.Button == tea.MouseLeft {
+			m.dragDetails(msg.X, msg.Y)
+		}
+		return m, nil
+	case tea.MouseReleaseMsg:
+		return m, m.releaseDetails(msg.X, msg.Y)
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
 		}
+		// Any key may change what the details pane shows, so the
+		// highlight would land on other text.
+		m.sel = selection{}
 		switch m.mode {
 		case searching:
 			return m, m.updateSearch(msg)
