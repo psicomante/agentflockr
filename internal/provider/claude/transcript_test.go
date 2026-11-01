@@ -1,12 +1,54 @@
 package claude
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/psicomante/agentflockr/internal/session"
 )
+
+func TestClaudeCustomTitleWinsInEitherOrder(t *testing.T) {
+	for _, titles := range [][]string{{`{"customTitle":"My title"}`, `{"aiTitle":"AI title"}`}, {`{"aiTitle":"AI title"}`, `{"customTitle":"My title"}`}} {
+		var s session.Session
+		for _, line := range titles {
+			if err := apply(&s, []byte(line)); err != nil {
+				t.Fatal(err)
+			}
+			// Incremental reads and index round trips must keep title precedence.
+			data, _ := json.Marshal(s)
+			if err := json.Unmarshal(data, &s); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if s.Title != "My title" {
+			t.Fatalf("title = %q", s.Title)
+		}
+	}
+}
+
+func TestClaudeAPIErrorSurvivesTurnDuration(t *testing.T) {
+	var s session.Session
+	for _, line := range []string{
+		`{"type":"assistant","isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"Usage limit reached"}],"stop_reason":"end_turn"}}`,
+		`{"type":"system","subtype":"turn_duration"}`,
+	} {
+		if err := apply(&s, []byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.Status != session.Failed || s.Evidence != "Transcript: API error: Usage limit reached" {
+		t.Fatalf("error: %+v", s)
+	}
+	// An ordinary message quoting an error is not evidence of failure.
+	if err := apply(&s, []byte(`{"type":"user","message":{"content":"Usage limit reached yesterday"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if s.Status != session.Working {
+		t.Fatalf("recovery: %+v", s)
+	}
+}
 
 func TestClaudeQuestionAndCompletion(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "cc-1.jsonl")

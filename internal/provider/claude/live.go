@@ -212,9 +212,9 @@ func (a *Adapter) applyLive(result *provider.Result) {
 		case "busy":
 			provider.SetState(s, session.Working, "Claude Code: running a turn")
 		case "idle":
-			// The process is open between turns. A finished turn stays done;
+			// The process is open between turns. A finished or failed turn stays;
 			// anything else in the transcript is out of date.
-			if s.Status != session.Completed {
+			if s.Status != session.Completed && s.Status != session.Failed {
 				provider.SetState(s, session.Idle, "Claude Code: open, no turn running")
 			}
 		default:

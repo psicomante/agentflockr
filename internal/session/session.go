@@ -41,6 +41,8 @@ type Session struct {
 	Transcript        string    `json:"transcript,omitempty"`
 	Cached            bool      `json:"cached"`
 	Missing           bool      `json:"missing_folder"`
+	// CustomTitle preserves an explicit rename across incremental transcript reads.
+	CustomTitle bool `json:"custom_title,omitempty"`
 	// Parent is the ID of the session that spawned this one, for providers
 	// that store sub-agent runs as sessions of their own.
 	Parent string `json:"parent_id,omitempty"`

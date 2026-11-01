@@ -136,6 +136,7 @@ type record struct {
 	SessionID   string  `json:"sessionId"`
 	CWD         string  `json:"cwd"`
 	IsMeta      bool    `json:"isMeta"`
+	IsAPIError  bool    `json:"isApiErrorMessage"`
 	IsSidechain bool    `json:"isSidechain"`
 	CustomTitle string  `json:"customTitle"`
 	AITitle     string  `json:"aiTitle"`
@@ -169,8 +170,9 @@ func apply(s *session.Session, line []byte) error {
 	}
 	if r.CustomTitle != "" {
 		s.Title = session.Text(r.CustomTitle, 100)
+		s.CustomTitle = true
 	}
-	if r.AITitle != "" {
+	if r.AITitle != "" && !s.CustomTitle {
 		s.Title = session.Text(r.AITitle, 100)
 	}
 	if r.IsMeta {
@@ -192,6 +194,10 @@ func apply(s *session.Session, line []byte) error {
 		}
 		provider.SetState(s, session.Working, "Transcript: user message or tool result")
 	case "assistant":
+		if r.IsAPIError {
+			provider.SetState(s, session.Failed, "Transcript: API error: "+session.Text(text, 300))
+			return nil
+		}
 		if text != "" {
 			s.Summary = session.Text(text, 600)
 		}
@@ -205,7 +211,7 @@ func apply(s *session.Session, line []byte) error {
 			}
 		}
 	case "system":
-		if r.Subtype == "turn_duration" {
+		if r.Subtype == "turn_duration" && s.Status != session.Failed {
 			provider.SetState(s, session.Completed, "Transcript: last turn completed")
 		}
 	}
