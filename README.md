@@ -23,6 +23,7 @@ first, so you can see which ones need you.
 - **Stays on your machine.** No account, no relay, no telemetry, and no AI model of its
   own. agentflockr makes no network requests of its own; it reads local files and
   runs your agents' CLIs, `tmux` and `ps`. What those programs do is up to them.
+  [See exactly what it reads and writes.](#what-it-reads-and-writes)
 - **Open any session.** Use its agent's own CLI, or the tmux pane already running it, and
   come back to the dashboard when you leave.
 - **Move projects.** Point agentflockr at a project's new folder and keep its sessions:
@@ -39,7 +40,7 @@ first, so you can see which ones need you.
 ![Go 1.26+](https://img.shields.io/badge/go-1.26%2B-a9c9dc)
 ![macOS and Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-efd28c)
 
-[Install](#install) · [Usage](#usage) · [Settings](#settings) · [How it works](#how-it-works) · [Not yet](#not-yet) · [Alternatives](#alternatives) · [Who wrote the code](#who-wrote-the-code) · [License](#license) · [Credits](#inspiration-and-credits)
+[Install](#install) · [Usage](#usage) · [Settings](#settings) · [How it works](#how-it-works) · [What it reads and writes](#what-it-reads-and-writes) · [Not yet](#not-yet) · [Alternatives](#alternatives) · [Who wrote the code](#who-wrote-the-code) · [Contributing](#contributing) · [License](#license) · [Credits](#inspiration-and-credits)
 
 ## Supported agents
 
@@ -85,6 +86,14 @@ make install
 
 `make install` also uses `~/.local/bin`. To change it, use
 `make install LOCAL_BIN=/path/to/bin`.
+
+With Go installed you can also skip the clone:
+
+```sh
+go install github.com/psicomante/agentflockr/cmd/agentflockr@latest
+```
+
+`agentflockr --version` then reports the module version Go recorded.
 
 ## Usage
 
@@ -186,6 +195,11 @@ agentflockr reads the transcripts and state files that Claude Code and Codex
 keep on disk. For OpenCode, it uses `opencode api`, which finds and signs in
 to the local service.
 
+It reads transcripts incrementally, and reads several at once, one per core, so
+a long history is ready quickly after startup. Until the first refresh ends, the
+dashboard shows what the index already holds. A refresh doesn't make moves or
+deletions wait: only their brief write to the index does.
+
 Its index is `sessions.db` in `~/.local/share/agentflockr`, readable only by
 you. If `XDG_DATA_HOME` is set, it goes in `$XDG_DATA_HOME/agentflockr`
 instead. You can also set `AGENTFLOCKR_DATA_DIR` or pass `--data-dir`.
@@ -196,6 +210,68 @@ you open an OpenCode session after updating its project's folder.
 Session data stays on your machine. There's no account, relay, telemetry or
 background AI model. agentflockr doesn't start agents in worktrees, run them
 in the cloud or replace their interfaces.
+
+## What it reads and writes
+
+An audit of the code (2026-11-01) found the following. Nothing here needs a
+network.
+
+**Network.** agentflockr makes no network requests. It has no HTTP client and
+never opens a connection. The only calls to a service go through the
+`opencode api` command, which talks to your local OpenCode service. The agents
+you open, and `codex debug models` (which fills the model list of the new
+session form), do what they do on their own. The installer, `install.sh`, is
+separate from the program and downloads a release from GitHub when you run it.
+
+**What it reads:**
+
+| What | From |
+|---|---|
+| Claude Code transcripts and live status | `~/.claude/projects/*/*.jsonl` and `~/.claude/sessions/*.json`, and the same in each `~/.claude-*` profile |
+| Codex transcripts | `~/.codex/sessions` and `~/.codex/archived_sessions` |
+| Codex profile names | The file names `NAME.config.toml` in `~/.codex`. It never opens them. |
+| OpenCode sessions | `opencode api`, only |
+| Settings | `~/.config/agentflockr/agentflockr.toml`, or the file you name |
+| Project folders | Whether each exists, and the folders you browse when moving a project |
+| Running processes | `ps`, when you open a session and tmux has panes: the arguments of every process, matched against the session and then dropped |
+| tmux | The list of panes, at the same time |
+| Clipboard | Only when you press `ctrl+v` in a text field (`pbpaste` on macOS; `xclip`, `xsel` or `wl-paste` on Linux) |
+
+It bounds what it reads from an agent: a transcript record up to 16 MiB, a
+status file 1 MiB, a command's output 64 MiB.
+
+**What it writes:**
+
+| What | Where | When |
+|---|---|---|
+| Its index | `sessions.db` in the data folder (`0600`, in a `0700` folder) | Every run except `--demo`, `--version`, `--help` and `--print-config` |
+| Claude Code: deletes a session's transcript and subagent folder | Inside that session's project folder only | After you confirm with `d`, and only if no live process owns the session |
+| Codex: deletes a session | `codex delete --force`, with `CODEX_HOME` set to the configured home | After you confirm with `d` |
+| OpenCode: deletes a session | `opencode api` | After you confirm with `d`, and not while a turn runs |
+| OpenCode: moves a session, or creates one | `opencode api` | When you open a session after moving its project; when you start one through a connection with a chosen model |
+| tmux focus | `select-window`, `select-pane`, then `attach-session` or `switch-client` | When you open a session already running in a pane |
+
+The index holds what it needs to list sessions, including each one's title and
+an excerpt of its last reply (up to 600 characters). It keeps them after the
+agent's own copy is gone, until you delete or remove the session from
+agentflockr. It never writes the settings file, a log or anything in the
+folder you start it from.
+
+Two settings of the terminal library can write files when you set them:
+`TEA_TRACE=PATH` appends a debug trace to PATH, and `TEA_DEBUG=1` writes
+`bubbletea-panic-TIME.log` in the current folder if agentflockr crashes.
+agentflockr never sets either.
+
+To check the network claim yourself:
+
+```sh
+go list -deps ./cmd/agentflockr | grep -E '^net'
+go build -o /tmp/agentflockr ./cmd/agentflockr
+go tool nm /tmp/agentflockr | grep -E ' T net\.(Dial|\(\*Dialer\)|Listen|\(\*Resolver\))|net/http\.'
+```
+
+The first command lists the `net` package, which the SQLite runtime pulls in
+but nothing uses to connect. The last prints nothing.
 
 ## Not yet
 
@@ -233,6 +309,13 @@ Based on session records and Git history as of 2026-10-31, agents wrote about
 with Claude Opus 5.5**, with smaller contributions from OpenCode. **2%** are
 classified as human and **7%** are unrecorded. These are estimates of who
 wrote the lines, not who designed or reviewed the code.
+
+## Contributing
+
+Bug reports and small fixes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+first, and open an issue before anything bigger than a fix. To report a
+vulnerability, follow [SECURITY.md](SECURITY.md) and use GitHub's private
+reporting, not a public issue.
 
 ## License
 
