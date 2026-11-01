@@ -76,6 +76,7 @@ main() {
     expected=$(awk -v f="$asset" '$2 == f { print $1 }' "$tmp/checksums.txt")
     [ -n "$expected" ] || fail "$asset is not listed in checksums.txt."
     [ "$(sha256 "$tmp/$asset")" = "$expected" ] || fail "checksum mismatch for $asset; nothing was installed."
+    tar -tzf "$tmp/$asset" | grep -qx 'agentflockr' || fail "the archive does not contain agentflockr."
     tar -xzf "$tmp/$asset" -C "$tmp" agentflockr
 
     mkdir -p "$install_dir"
