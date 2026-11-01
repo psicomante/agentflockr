@@ -14,6 +14,12 @@ fail() {
     exit 1
 }
 
+# Every request is https only, also after a redirect, and TLS 1.2 or newer.
+# A few retries cover a brief network failure.
+download() {
+    curl -fsSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 "$@"
+}
+
 main() {
     repo=psicomante/agentflockr
     version=${AGENTFLOCKR_VERSION:-latest}
@@ -53,7 +59,7 @@ main() {
         # checksums each from releases/latest could mix two releases if one is
         # published in between. GitHub redirects to .../releases/tag/TAG, or to
         # .../releases when nothing is published yet.
-        resolved=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest") ||
+        resolved=$(download -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest") ||
             fail "could not reach https://github.com/$repo/releases/latest"
         version=${resolved##*/}
         case "$version" in
@@ -70,8 +76,8 @@ main() {
     trap 'exit 1' HUP INT TERM
 
     printf 'Downloading %s (%s)...\n' "$asset" "$version"
-    curl -fsSL -o "$tmp/$asset" "$base/$asset" || fail "could not download $base/$asset"
-    curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" || fail "could not download $base/checksums.txt"
+    download -o "$tmp/$asset" "$base/$asset" || fail "could not download $base/$asset"
+    download -o "$tmp/checksums.txt" "$base/checksums.txt" || fail "could not download $base/checksums.txt"
 
     expected=$(awk -v f="$asset" '$2 == f { print $1 }' "$tmp/checksums.txt")
     [ -n "$expected" ] || fail "$asset is not listed in checksums.txt."
