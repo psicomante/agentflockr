@@ -1,0 +1,61 @@
+version: 2
+
+project_name: agentflockr
+
+builds:
+  - main: ./cmd/agentflockr
+    binary: agentflockr
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    # The tag keeps release versions in the same form scripts/version.sh prints.
+    ldflags:
+      - -s -w -X github.com/psicomante/agentflockr/internal/buildinfo.Version={{ .Tag }}
+
+archives:
+  # install.sh downloads agentflockr_<Darwin|Linux>_<arm64|x86_64>.tar.gz.
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    # README.md points at assets/ with relative paths, so the archive carries
+    # the folder too; without it the wordmark and the tour show as broken images.
+    files: [LICENSE, README.md, assets/*]
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  # A tag such as v0.2.0-rc.1 is published as a prerelease, so it never becomes
+  # the "latest" release that install.sh resolves.
+  prerelease: auto
+
+changelog:
+  sort: asc
+  use: git
+  abbrev: 7
+  # Groups are matched in order, so the breaking-change group (`!`) must stay
+  # first or those commits would land under Added or Fixed.
+  groups:
+    - title: Breaking changes
+      regexp: '^.*?(feat|fix)(\([[:word:]]+\))?!:.+$'
+      order: 0
+    - title: Added
+      regexp: '^.*?feat(\([[:word:]]+\))?:.+$'
+      order: 1
+    - title: Fixed
+      regexp: '^.*?fix(\([[:word:]]+\))?:.+$'
+      order: 2
+    - title: Other
+      order: 3
+  # Commits users can't see. The last entry drops the throwaway subjects from
+  # before Conventional Commits were enforced.
+  filters:
+    exclude:
+      - '^docs(\(.+\))?:'
+      - '^ci(\(.+\))?:'
+      - '^refactor(\(.+\))?:'
+      - '^chore(\(.+\))?:'
+      - '^test(\(.+\))?:'
+      - '^(up|upp|initial)$'
