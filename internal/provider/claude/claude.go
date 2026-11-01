@@ -88,7 +88,9 @@ func (a *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 }
 
 // Resume prefers the transcript path, which identifies the session even when
-// Claude Code would look in a different project folder for the bare ID.
+// Claude Code would look in a different project folder for the bare ID. When
+// the transcript is under a home the adapter reads, the session resumes with
+// that home's profile: its command and CLAUDE_CONFIG_DIR, as Start does.
 func (a *Adapter) Resume(_ context.Context, s session.Session) (provider.Command, error) {
 	if err := provider.CheckResumable(s); err != nil {
 		return provider.Command{}, err
@@ -100,7 +102,17 @@ func (a *Adapter) Resume(_ context.Context, s session.Session) (provider.Command
 		}
 		ref = s.Transcript
 	}
-	return provider.Command{Name: "claude", Args: []string{"--resume", ref}, Directory: s.Directory}, nil
+	cmd := provider.Command{Name: "claude", Args: []string{"--resume", ref}, Directory: s.Directory}
+	if s.Transcript == "" {
+		return cmd, nil
+	}
+	if l, ok := a.launchFor(s.Transcript); ok {
+		command := l.commandOrDefault()
+		cmd.Name = command[0]
+		cmd.Args = append(append([]string(nil), command[1:]...), "--resume", ref)
+		a.configDir(&cmd, l.home)
+	}
+	return cmd, nil
 }
 
 func (a *Adapter) MatchesProcess(args []string, s session.Session) bool {

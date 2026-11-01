@@ -128,15 +128,51 @@ func (a *Adapter) Start(ctx context.Context, n provider.NewSession) (provider.Co
 		args = append(args, "--effort", n.Effort)
 	}
 	cmd := provider.Command{Name: command[0], Args: args, Directory: n.Directory}
+	a.configDir(&cmd, l.home)
+	return cmd, nil
+}
+
+// configDir sets cmd's environment so Claude Code runs with home. Start and
+// Resume share it, so they cannot disagree about the default home.
+func (a *Adapter) configDir(cmd *provider.Command, home string) {
 	// Compared as folders, not strings: "~/.claude/" or a symlink to it is
 	// still the default home, and setting the variable there would switch
 	// Claude Code to another account file.
-	if a.DefaultHome != "" && session.SameDirectory(l.home, a.DefaultHome) {
+	if a.DefaultHome != "" && session.SameDirectory(home, a.DefaultHome) {
 		cmd.Unset = []string{"CLAUDE_CONFIG_DIR"}
-	} else {
-		cmd.Env = []string{"CLAUDE_CONFIG_DIR=" + l.home}
+		return
 	}
-	return cmd, nil
+	cmd.Env = []string{"CLAUDE_CONFIG_DIR=" + home}
+}
+
+// launchFor finds the launch of the home that holds transcript: a configured
+// profile first, so its command is used, then any other home the adapter
+// reads, which runs plain claude. It returns false for a transcript under
+// none of them.
+func (a *Adapter) launchFor(transcript string) (launch, bool) {
+	for _, l := range a.launches() {
+		if underHome(l.home, transcript) {
+			return l, true
+		}
+	}
+	for _, home := range a.homes() {
+		if underHome(home, transcript) {
+			return launch{home: home, command: []string{"claude"}}, true
+		}
+	}
+	return launch{}, false
+}
+
+// underHome reports whether transcript is a session file in one of home's
+// project folders, home/projects/FOLDER/FILE.jsonl, the layout Scan reads. The
+// paths are compared cleaned, and no link is followed.
+func underHome(home, transcript string) bool {
+	rel, err := filepath.Rel(filepath.Join(home, "projects"), filepath.Clean(transcript))
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	return len(parts) == 2 && parts[0] != ".." && parts[0] != "." && filepath.Ext(parts[1]) == ".jsonl"
 }
 
 // findLaunch looks the ID up among the profiles. It never treats the ID as a
