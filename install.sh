@@ -86,6 +86,10 @@ main() {
     cp "$tmp/agentflockr" "$staged"
     chmod 0755 "$staged"
     installed=$("$staged" --version) || fail 'the downloaded binary does not run; nothing was installed.'
+    if [ -x "$install_dir/agentflockr" ]; then
+        previous=$("$install_dir/agentflockr" --version 2>/dev/null) || previous='an unknown version'
+        printf 'Replacing %s with %s.\n' "$previous" "$installed"
+    fi
     mv -f "$staged" "$install_dir/agentflockr"
     staged=
 
