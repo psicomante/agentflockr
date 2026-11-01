@@ -1,0 +1,43 @@
+name: Bug report
+description: Something in agentflockr doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you saw instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `agentflockr --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15, Ubuntu 24.04
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent involved
+      multiple: true
+      options: [Claude Code, Codex, OpenCode, None or all]
+    validations:
+      required: true
+  - type: input
+    id: agent-version
+    attributes:
+      label: Agent version
+      description: For example `claude --version`. Leave empty if not relevant.
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Settings, tmux use, terminal. Don't paste session contents or secrets.
