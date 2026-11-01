@@ -31,6 +31,10 @@ main() {
         *) version=v$version ;;
     esac
     install_dir=${AGENTFLOCKR_INSTALL_DIR:-${HOME:?HOME must be set}/.local/bin}
+    case "$install_dir" in
+        /*) ;;
+        *) fail "AGENTFLOCKR_INSTALL_DIR must be an absolute path, not $install_dir" ;;
+    esac
 
     case "$(uname -s)" in
         Darwin) os=Darwin ;;
