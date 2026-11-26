@@ -130,15 +130,16 @@ func Parse(path string) (session.Session, error) {
 }
 
 type record struct {
-	Type        string `json:"type"`
-	Subtype     string `json:"subtype"`
-	Timestamp   string `json:"timestamp"`
-	SessionID   string `json:"sessionId"`
-	CWD         string `json:"cwd"`
-	IsMeta      bool   `json:"isMeta"`
-	IsSidechain bool   `json:"isSidechain"`
-	CustomTitle string `json:"customTitle"`
-	AITitle     string `json:"aiTitle"`
+	Type        string  `json:"type"`
+	Subtype     string  `json:"subtype"`
+	Timestamp   string  `json:"timestamp"`
+	SessionID   string  `json:"sessionId"`
+	CWD         string  `json:"cwd"`
+	IsMeta      bool    `json:"isMeta"`
+	IsSidechain bool    `json:"isSidechain"`
+	CustomTitle string  `json:"customTitle"`
+	AITitle     string  `json:"aiTitle"`
+	Origin      *origin `json:"origin"`
 	Message     struct {
 		Content    json.RawMessage `json:"content"`
 		StopReason string          `json:"stop_reason"`
@@ -183,7 +184,10 @@ func apply(s *session.Session, line []byte) error {
 	}
 	switch r.Type {
 	case "user":
-		if s.Title == "" && text != "" {
+		// Until Claude Code names the session, the person's first prompt
+		// does. Records it writes itself, such as the /clear that starts a
+		// new session, are not prompts.
+		if s.Title == "" && text != "" && r.Origin.prompt(text) {
 			s.Title = session.Text(text, 100)
 		}
 		provider.SetState(s, session.Working, "Transcript: user message or tool result")
