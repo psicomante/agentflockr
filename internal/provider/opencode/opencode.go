@@ -149,6 +149,7 @@ const maxPages = 1000
 
 func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 	result := provider.Result{Provider: session.OpenCode}
+	models := map[string]string{}
 	var active struct {
 		Data map[string]json.RawMessage `json:"data"`
 	}
@@ -172,9 +173,10 @@ func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 		}
 		var page struct {
 			Data []struct {
-				ID       string `json:"id"`
-				Title    string `json:"title"`
-				Outcome  string `json:"outcome"`
+				ID       string      `json:"id"`
+				Title    string      `json:"title"`
+				Outcome  string      `json:"outcome"`
+				Model    nativeModel `json:"model"`
 				Location struct {
 					Directory string `json:"directory"`
 				} `json:"location"`
@@ -195,6 +197,9 @@ func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 			return result
 		}
 		for _, item := range page.Data {
+			if item.Model.ProviderID != "" {
+				models[item.ID] = item.Model.ProviderID
+			}
 			s := session.Session{ID: item.ID, Provider: session.OpenCode, Directory: item.Location.Directory, OriginalDirectory: item.Location.Directory, Title: session.Text(item.Title, 100), Summary: session.Text(item.Title, 600), UpdatedAt: time.UnixMilli(item.Time.Updated), Status: session.Idle, Evidence: "OpenCode API: no active turn"}
 			if activeErr != nil {
 				provider.SetState(&s, session.Unknown, "OpenCode live status unavailable")
@@ -233,6 +238,18 @@ func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 			return result
 		}
 		seen[cursor] = true
+	}
+	if len(models) > 0 {
+		connections := o.currentConnections(ctx)
+		for i := range result.Sessions {
+			id := models[result.Sessions[i].ID]
+			if id != "" {
+				result.Sessions[i].CurrentConnection = session.Text(id, 100) + " · " + connections[id]
+				if connections[id] == "" {
+					result.Sessions[i].CurrentConnection += "unavailable"
+				}
+			}
+		}
 	}
 	return result
 }

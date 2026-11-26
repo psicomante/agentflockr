@@ -274,6 +274,7 @@ func (e *Engine) Scan(ctx context.Context) Snapshot {
 		if s, ok := fresh[items[i].Key()]; ok {
 			items[i].Status = s.Status
 			items[i].Evidence = s.Evidence
+			items[i].CurrentConnection = s.CurrentConnection
 			items[i].Cached = false
 		}
 	}

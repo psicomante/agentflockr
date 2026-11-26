@@ -344,6 +344,17 @@ func TestPreviewLoadsForTheSelectedSession(t *testing.T) {
 	}
 }
 
+func TestCurrentConnectionShownInDetails(t *testing.T) {
+	s := fake("ses_a", session.OpenCode, "web", session.Working, time.Minute)
+	s.CurrentConnection = "openai · Work (OAuth)"
+	m := newModel(t, []session.Session{s})
+	m.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	view := screen(m)
+	if !strings.Contains(view, "Current connection") || !strings.Contains(view, "Work (OAuth)") || !strings.Contains(view, "not historical") {
+		t.Fatalf("current connection missing from details:\n%s", view)
+	}
+}
+
 func TestEmptyStatesSayWhatToDo(t *testing.T) {
 	m := newModel(t, nil)
 	m.scanning = false

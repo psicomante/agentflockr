@@ -41,6 +41,8 @@ type Session struct {
 	Transcript        string    `json:"transcript,omitempty"`
 	Cached            bool      `json:"cached"`
 	Missing           bool      `json:"missing_folder"`
+	// CurrentConnection is live metadata, never part of the stored index.
+	CurrentConnection string `json:"-"`
 	// CustomTitle preserves an explicit rename across incremental transcript reads.
 	CustomTitle bool `json:"custom_title,omitempty"`
 	// Parent is the ID of the session that spawned this one, for providers

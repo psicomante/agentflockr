@@ -369,6 +369,13 @@ func (m *Model) sessionDetails(p palette, s session.Session, width, height int) 
 	}
 	top = append(top, lipgloss.NewStyle().Foreground(p.status(s.Status)).Render(glyph+" "+label)+
 		muted.Render(" · "+m.title(s.Provider)+" · "+m.ago(s.UpdatedAt)), "")
+	if s.Provider == session.OpenCode {
+		connection := s.CurrentConnection
+		if connection == "" {
+			connection = "unavailable"
+		}
+		top = append(top, muted.Render("Current connection · not historical"), fit(session.Text(connection, 200), width), "")
+	}
 	activity := m.activity(s)
 	heading := "Latest activity"
 	if preview, ok := m.currentPreview(s); ok {
