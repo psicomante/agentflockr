@@ -3,12 +3,18 @@ updates:
   - package-ecosystem: gomod
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      go:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     commit-message:
       prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
