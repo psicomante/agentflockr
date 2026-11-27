@@ -96,23 +96,27 @@ func (m *Model) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 	m.dialogErr = ""
 	if m.mode == confirmDelete {
 		m.busy = "Deleting…"
+		// The command runs on another goroutine, so it copies what it needs
+		// now instead of reading the model later.
+		engine, parent := m.engine, m.ctx
 		return func() tea.Msg {
-			ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+			ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 			defer cancel()
 			key := target.session.Key()
-			generation, err := m.engine.Delete(ctx, key)
+			generation, err := engine.Delete(ctx, key)
 			return deletedMsg{key: key, generation: generation, err: err}
 		}
 	}
 	m.busy = "Removing…"
+	engine := m.engine
 	return func() tea.Msg {
 		if target.project {
 			id := target.session.ProjectID
-			generation, err := m.engine.RemoveProject(id)
+			generation, err := engine.RemoveProject(id)
 			return removedMsg{project: id, generation: generation, err: err}
 		}
 		key := target.session.Key()
-		generation, err := m.engine.RemoveSession(key)
+		generation, err := engine.RemoveSession(key)
 		return removedMsg{key: key, generation: generation, err: err}
 	}
 }

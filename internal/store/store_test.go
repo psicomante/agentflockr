@@ -78,6 +78,29 @@ func TestSymlinkedFolderKeepsOneProject(t *testing.T) {
 	}
 }
 
+// TestIndexIsPrivate covers REQ-SAF-006: the folder is created 0700 and the
+// file 0600 before anything else can read them.
+func TestIndexIsPrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data", "sessions.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, c := range []struct {
+		path string
+		want os.FileMode
+	}{{filepath.Dir(path), 0700}, {path, 0600}} {
+		info, err := os.Stat(c.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != c.want {
+			t.Fatalf("%s has mode %v, want %v", c.path, got, c.want)
+		}
+	}
+}
+
 func TestPreferencesPersist(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sessions.db")
 	db, err := Open(path)

@@ -26,6 +26,7 @@ const (
 	confirmDelete
 	moving
 	startingNew
+	inspecting
 )
 
 type scanMsg app.Snapshot
@@ -98,6 +99,10 @@ type Model struct {
 	viaTmux       bool   // the open moved to an existing tmux pane
 	previews      map[string]previewEntry
 	dark          bool
+	infos         map[string]provider.Info
+	infoPending   map[string]bool
+	infoSeq       uint64
+	infoOffset    int
 
 	// The remove, delete and move dialogs.
 	target        item   // the row the dialog acts on
@@ -120,6 +125,7 @@ func New(ctx context.Context, engine *app.Engine, options Options, snapshot app.
 	m := &Model{ctx: ctx, engine: engine, interval: options.Refresh, recent: options.RecentWindow, now: time.Now, snapshot: snapshot,
 		width: 100, height: 30, previews: map[string]previewEntry{}, dark: true}
 	m.input = textinput.New()
+	m.infos, m.infoPending = map[string]provider.Info{}, map[string]bool{}
 	m.input.CharLimit = 200
 	m.input.Prompt = "/ "
 	m.input.Placeholder = "title, folder or session ID"
@@ -144,7 +150,10 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(tea.RequestBackgroundColor, m.scan(), m.tick(), m.preview())
 }
 
-func (m *Model) scan() tea.Cmd { return func() tea.Msg { return scanMsg(m.engine.Scan(m.ctx)) } }
+func (m *Model) scan() tea.Cmd {
+	engine, ctx := m.engine, m.ctx
+	return func() tea.Msg { return scanMsg(engine.Scan(ctx)) }
+}
 
 func (m *Model) tick() tea.Cmd {
 	return tea.Tick(m.interval, func(t time.Time) tea.Msg { return tickMsg(t) })
@@ -256,9 +265,9 @@ func (m *Model) activity(s session.Session) string {
 	return s.Summary
 }
 
-// preview asks for the selected session's latest activity after a short
+// activityPreview asks for the selected session's latest activity after a short
 // pause, so scrolling through the list does not start a request per row.
-func (m *Model) preview() tea.Cmd {
+func (m *Model) activityPreview() tea.Cmd {
 	it, ok := m.selected()
 	if !ok || it.project || !m.engine.CanPreview(it.session) {
 		return nil
@@ -272,6 +281,19 @@ func (m *Model) preview() tea.Cmd {
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case infoRequest:
+		it, ok := m.selected()
+		if !ok || it.project || it.session.Key() != msg.item.Key() || msg.seq != m.infoSeq || m.infoPending[msg.item.Key()] {
+			return m, nil
+		}
+		m.infoPending[msg.item.Key()] = true
+		engine, ctx := m.engine, m.ctx
+		return m, func() tea.Msg { return infoMsg{key: msg.item.Key(), seq: msg.seq, info: engine.Inspect(ctx, msg.item)} }
+	case infoMsg:
+		if msg.seq == m.infoSeq {
+			m.infos[msg.key] = msg.info
+		}
+		return m, nil
 	case tea.BackgroundColorMsg:
 		m.dark = msg.IsDark()
 		m.styleInput()
@@ -288,6 +310,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.rescan()
 		}
 		m.snapshot = app.Snapshot(msg)
+		m.infoSeq++
+		// Keep the last inspection on screen while the next one is read: wiping
+		// it made the information panel fall back to "Loading…" on every
+		// refresh and flicker. Only sessions that left the list are dropped.
+		m.infoPending = map[string]bool{}
+		listed := make(map[string]bool, len(m.snapshot.Sessions))
+		for _, s := range m.snapshot.Sessions {
+			listed[s.Key()] = true
+		}
+		for key := range m.infos {
+			if !listed[key] {
+				delete(m.infos, key)
+			}
+		}
 		m.rebuild()
 		return m, m.preview()
 	case startProfilesMsg:
@@ -366,10 +402,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.previews[s.Key()] = previewEntry{updated: s.UpdatedAt, loading: true}
+		engine, parent := m.engine, m.ctx
 		return m, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
+			ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 			defer cancel()
-			text, err := m.engine.Preview(ctx, s)
+			text, err := engine.Preview(ctx, s)
 			return previewMsg{key: s.Key(), updated: s.UpdatedAt, text: text, err: err}
 		}
 	case previewMsg:
@@ -413,6 +450,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// highlight would land on other text.
 		m.sel = selection{}
 		switch m.mode {
+		case inspecting:
+			switch msg.String() {
+			case "esc", "q", "i", "enter":
+				m.mode = browsing
+			case "down", "j":
+				m.scrollInformation(1)
+			case "up", "k":
+				m.scrollInformation(-1)
+			}
+			return m, nil
 		case searching:
 			return m, m.updateSearch(msg)
 		case confirmRemove, confirmDelete:
@@ -444,6 +491,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) updateBrowse(msg tea.KeyPressMsg) tea.Cmd {
 	m.notice = ""
 	switch msg.String() {
+	case "i":
+		m.mode, m.infoOffset = inspecting, 0
+		return m.preview()
 	case "q":
 		return tea.Quit
 	case "j", "down":
@@ -526,10 +576,11 @@ func (m *Model) open(s session.Session) tea.Cmd {
 	}
 	m.opening = m.title(s.Provider)
 	m.notice = "Opening in " + m.opening + "…"
+	engine, parent := m.engine, m.ctx
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.ctx, 15*time.Second)
+		ctx, cancel := context.WithTimeout(parent, startTimeout)
 		defer cancel()
-		command, err := m.engine.Open(ctx, s)
+		command, err := engine.Open(ctx, s)
 		return preparedMsg{command: command, err: err}
 	}
 }

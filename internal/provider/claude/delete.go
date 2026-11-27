@@ -32,7 +32,7 @@ func (a *Adapter) Delete(ctx context.Context, s session.Session) error {
 	var base, owner string
 	var parts []string
 	for _, home := range a.homes() {
-		root, err := filepath.Abs(filepath.Join(home, "projects"))
+		root, err := filepath.Abs(filepath.Join(home, projectsFolder))
 		if err != nil {
 			return err
 		}

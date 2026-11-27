@@ -15,7 +15,8 @@ import (
 )
 
 // startTimeout bounds each read of profiles or models, and the start itself.
-// It is the same bound as opening a session.
+// Opening a session (Model.open in model.go) uses it too, so the two bounds
+// cannot drift apart.
 const startTimeout = 15 * time.Second
 
 // The form's fields, top to bottom.
@@ -241,10 +242,11 @@ func (m *Model) loadProfiles() tea.Cmd {
 	seq := m.startSeq
 	f.wantProfiles = seq
 	f.profState, f.profErr, f.profiles = loading, "", nil
+	engine, parent := m.engine, m.ctx
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.ctx, startTimeout)
+		ctx, cancel := context.WithTimeout(parent, startTimeout)
 		defer cancel()
-		profiles, err := m.engine.StartProfiles(ctx, agent)
+		profiles, err := engine.StartProfiles(ctx, agent)
 		return startProfilesMsg{agent: agent, seq: seq, profiles: profiles, err: err}
 	}
 }
@@ -284,10 +286,11 @@ func (m *Model) loadCatalog() tea.Cmd {
 	f.catState, f.catErr, f.catalog = loading, "", provider.Catalog{}
 	agent := f.agentID()
 	profile := p.ID
+	engine, parent := m.engine, m.ctx
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.ctx, startTimeout)
+		ctx, cancel := context.WithTimeout(parent, startTimeout)
 		defer cancel()
-		catalog, err := m.engine.StartCatalog(ctx, agent, profile)
+		catalog, err := engine.StartCatalog(ctx, agent, profile)
 		return startCatalogMsg{key: key, seq: seq, catalog: catalog, err: err}
 	}
 }
@@ -433,10 +436,11 @@ func (m *Model) startEnter() tea.Cmd {
 	n := provider.NewSession{Directory: folder, Profile: p.ID, Model: f.model, Effort: f.effort}
 	m.opening = m.title(agent)
 	m.notice = "Starting " + m.opening + "…"
+	engine, parent := m.engine, m.ctx
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.ctx, startTimeout)
+		ctx, cancel := context.WithTimeout(parent, startTimeout)
 		defer cancel()
-		command, err := m.engine.Start(ctx, agent, n)
+		command, err := engine.Start(ctx, agent, n)
 		return preparedMsg{command: command, err: err, starting: true}
 	}
 }

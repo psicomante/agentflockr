@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/psicomante/agentflockr/internal/provider"
 	"github.com/psicomante/agentflockr/internal/session"
+	"github.com/psicomante/agentflockr/internal/store"
 )
 
 // Demo returns sample sessions spanning every status, dated relative to now.
@@ -25,7 +27,7 @@ func Demo() Snapshot {
 		{session.Claude, "api", "Document authentication", "Documentation updated with the token refresh flow and examples.", "Transcript: last turn completed", session.Completed, time.Hour},
 		{session.Codex, "website", "Fix checkout tests", "All 18 checkout tests pass.", "Transcript: last turn completed", session.Completed, 2 * time.Hour},
 		{session.OpenCode, "agentflockr", "Define the MVP", "Confirmed the local control room scope.", "OpenCode API: last turn succeeded", session.Completed, 26 * time.Hour},
-		{session.Claude, "archive", "Review old experiment", "Historical session with no live status evidence.", "Cached history; awaiting a successful provider scan", session.Unknown, 7 * 24 * time.Hour},
+		{session.Claude, "archive", "Review old experiment", "Historical session with no live status evidence.", store.CachedEvidence, session.Unknown, 7 * 24 * time.Hour},
 	}
 	snap := Snapshot{UpdatedAt: now}
 	for i, x := range examples {
@@ -34,4 +36,24 @@ func Demo() Snapshot {
 	}
 	Sort(snap.Sessions)
 	return snap
+}
+
+// demoInfo is what a Claude Code session with the agentflockr mod reports,
+// shown for every demo session in both interfaces.
+func demoInfo(now time.Time) provider.Info {
+	return provider.Info{
+		Model: "claude-opus-5-5", Effort: "high", Version: "2.1.311", Home: ".claude-personal",
+		Repo: "agentflockr", Branch: "feat/phone", Worktree: "main tree",
+		ContextTokens: 61400, ContextWindow: 200000, ContextPercent: 30.7, CostUSD: 2.41, Turns: 6, ToolCalls: 38,
+		Limits: []provider.Limit{
+			{Kind: "five_hour", PercentUsed: 72, ResetsAt: now.Add(95 * time.Minute)},
+			{Kind: "seven_day", PercentUsed: 18, ResetsAt: now.Add(80 * time.Hour)},
+		},
+		MCP:        []provider.MCPServer{{Name: "codegraph", Tools: 1}, {Name: "github", Tools: 24}},
+		Files:      []provider.FileChange{{Path: "/work/agentflockr/internal/server/routes.go", Status: "edited"}, {Path: "/work/agentflockr/docs/phone.md", Status: "edited"}},
+		FilesKnown: true, FilesSource: "Demo transcript · completed edits",
+		GitFiles: []provider.FileChange{{Path: "internal/server/routes.go", Status: "M"}, {Path: "docs/phone.md", Status: "M"}, {Path: "notes/todo.md", Status: "??"}, {Path: ".env", Status: "M"}},
+		GitKnown: true,
+		At:       now,
+	}
 }

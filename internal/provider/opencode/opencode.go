@@ -14,14 +14,22 @@ import (
 	"github.com/psicomante/agentflockr/internal/session"
 )
 
-type Adapter struct{ Run provider.Runner }
+type Adapter struct {
+	Run provider.Runner
+	// observe, when set, is told each scanned session's agent and model, for
+	// the metadata serve shows.
+	observe func(id, agent string, model nativeModel)
+	// lookup finds the opencode command; nil uses exec.LookPath. serve starts
+	// sessions over HTTP and does not need the command.
+	lookup func(string) (string, error)
+}
 
 func New() *Adapter { return &Adapter{} }
 
 func (o *Adapter) ID() session.Provider { return session.OpenCode }
 
 func (o *Adapter) Meta() provider.Meta {
-	return provider.Meta{Name: "OpenCode", Title: "OpenCode", Short: "OC", Source: "OpenCode V2: authenticated CLI/API",
+	return provider.Meta{Title: "OpenCode", Short: "OC", Source: "OpenCode V2: authenticated CLI/API",
 		DeleteScope: "Deletes this conversation and its child sessions."}
 }
 
@@ -143,6 +151,10 @@ func (o *Adapter) request(ctx context.Context, path string, target any) error {
 	return nil
 }
 
+// agentNameLimit bounds the name of the OpenCode agent kept as a session's
+// mode; real names are a word or two.
+const agentNameLimit = 80
+
 // maxPages caps how many pages of 100 sessions one scan follows, so an
 // endless listing cannot keep a scan running. It allows 100,000 sessions.
 const maxPages = 1000
@@ -174,6 +186,7 @@ func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 		var page struct {
 			Data []struct {
 				ID       string      `json:"id"`
+				Agent    string      `json:"agent"`
 				Title    string      `json:"title"`
 				Outcome  string      `json:"outcome"`
 				Model    nativeModel `json:"model"`
@@ -199,6 +212,9 @@ func (o *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 		for _, item := range page.Data {
 			if item.Model.ProviderID != "" {
 				models[item.ID] = item.Model.ProviderID
+			}
+			if o.observe != nil {
+				o.observe(item.ID, session.Text(item.Agent, agentNameLimit), item.Model)
 			}
 			s := session.Session{ID: item.ID, Provider: session.OpenCode, Directory: item.Location.Directory, OriginalDirectory: item.Location.Directory, Title: session.Text(item.Title, 100), Summary: session.Text(item.Title, 600), UpdatedAt: time.UnixMilli(item.Time.Updated), Status: session.Idle, Evidence: "OpenCode API: no active turn"}
 			if activeErr != nil {

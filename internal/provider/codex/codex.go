@@ -34,17 +34,26 @@ func New(home string) *Adapter { return &Adapter{Home: home} }
 func (a *Adapter) ID() session.Provider { return session.Codex }
 
 func (a *Adapter) Meta() provider.Meta {
-	return provider.Meta{Name: "Codex", Title: "Codex", Short: "CX", Source: "Codex: local rollout files",
+	return provider.Meta{Title: "Codex", Short: "CX", Source: "Codex: local rollout files",
 		DeleteScope: "Permanently deletes this conversation through Codex."}
 }
+
+// storageFolders are the folders of a Codex home that hold transcripts. Scan
+// reads them, and checkPath, which guards deletion, accepts only transcripts
+// inside them, so one list keeps the two the same.
+var storageFolders = []string{"sessions", "archived_sessions"}
 
 // Scan is called by one scan worker at a time; the source keeps its parse
 // cache between scans.
 func (a *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 	if a.files == nil {
+		roots := make([]string, len(storageFolders))
+		for i, folder := range storageFolders {
+			roots[i] = filepath.Join(a.Home, folder)
+		}
 		a.files = &jsonl.Source{
 			Provider:   session.Codex,
-			Roots:      []string{filepath.Join(a.Home, "sessions"), filepath.Join(a.Home, "archived_sessions")},
+			Roots:      roots,
 			StaleAfter: a.StaleAfter,
 			Apply:      apply,
 		}

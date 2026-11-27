@@ -28,6 +28,26 @@ func TestClaudeCustomTitleWinsInEitherOrder(t *testing.T) {
 	}
 }
 
+// A session started with /clear begins with Claude Code's own records; the
+// person's first prompt names it.
+func TestClaudeTitleSkipsRecordsClaudeWrites(t *testing.T) {
+	var s session.Session
+	for _, line := range []string{
+		`{"type":"user","message":{"content":"<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>"}}`,
+		`{"type":"user","message":{"content":"<local-command-stdout></local-command-stdout>"}}`,
+		`{"type":"user","message":{"content":"<bash-input>ls</bash-input>"}}`,
+		`{"type":"user","origin":{"kind":"task-notification"},"message":{"content":"Background command completed"}}`,
+		`{"type":"user","origin":{"kind":"human"},"message":{"content":"Fix the login page"}}`,
+	} {
+		if err := apply(&s, []byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if s.Title != "Fix the login page" {
+		t.Fatalf("title = %q", s.Title)
+	}
+}
+
 func TestClaudeAPIErrorSurvivesTurnDuration(t *testing.T) {
 	var s session.Session
 	for _, line := range []string{
@@ -90,25 +110,5 @@ func TestClaudeSessionKeepsTheFolderItStartedIn(t *testing.T) {
 	}
 	if s.Directory != "/a" || s.OriginalDirectory != "/a" {
 		t.Fatalf("folder %q (original %q), want the starting folder /a", s.Directory, s.OriginalDirectory)
-	}
-}
-
-// A session started with /clear begins with Claude Code's own records; the
-// person's first prompt names it.
-func TestClaudeTitleSkipsRecordsClaudeWrites(t *testing.T) {
-	var s session.Session
-	for _, line := range []string{
-		`{"type":"user","message":{"content":"<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>"}}`,
-		`{"type":"user","message":{"content":"<local-command-stdout></local-command-stdout>"}}`,
-		`{"type":"user","message":{"content":"<bash-input>ls</bash-input>"}}`,
-		`{"type":"user","origin":{"kind":"task-notification"},"message":{"content":"Background command completed"}}`,
-		`{"type":"user","origin":{"kind":"human"},"message":{"content":"Fix the login page"}}`,
-	} {
-		if err := apply(&s, []byte(line)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if s.Title != "Fix the login page" {
-		t.Fatalf("title = %q", s.Title)
 	}
 }

@@ -21,6 +21,10 @@ type Starter struct {
 	mu      sync.Mutex
 	calls   []string
 	started []provider.NewSession
+	// launched holds the Launched values WithLauncher records. It is
+	// untyped because Launched carries a phone message: the dashboard's
+	// fakes build without the phone app's types.
+	launched []any
 }
 
 // Calls lists the calls made so far, such as "profiles" or "catalog:work".

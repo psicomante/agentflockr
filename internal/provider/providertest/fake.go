@@ -28,7 +28,7 @@ func (f *Fake) Delete(ctx context.Context, s session.Session) error {
 func (f *Fake) ID() session.Provider { return f.Provider }
 
 func (f *Fake) Meta() provider.Meta {
-	return provider.Meta{Name: string(f.Provider), Title: string(f.Provider), Short: "FK"}
+	return provider.Meta{Title: string(f.Provider), Short: "FK"}
 }
 
 func (f *Fake) Scan(ctx context.Context, now time.Time) provider.Result {

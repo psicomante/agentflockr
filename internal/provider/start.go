@@ -97,6 +97,11 @@ type Model struct {
 	Name          string   // shown in the form, already made safe
 	Efforts       []string // empty when the model takes no effort setting
 	DefaultEffort string   // the agent's own default for this model, if known
+	// Connection is OpenCode's connection name and ID, which the phone shows
+	// beside the model. Other agents leave it empty.
+	Connection       string
+	ConnectionID     string // opaque OpenCode credential ID; never a credential value
+	ConnectionActive bool
 }
 
 // NewSession is a session to start. Empty Model or Effort means the

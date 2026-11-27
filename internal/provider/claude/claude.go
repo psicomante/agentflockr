@@ -32,6 +32,10 @@ func New(home string, extraHomes ...string) *Adapter {
 	return &Adapter{Home: home, ExtraHomes: extraHomes}
 }
 
+// Homes lists every Claude Code home the adapter reads, for installing the
+// agentflockr mod in each.
+func (a *Adapter) Homes() []string { return a.homes() }
+
 // homes lists every folder that holds sessions: Home, the extra homes, and
 // the profiles' homes. A folder named twice is read once, so a session
 // started with a profile whose home is also Home is listed once.
@@ -58,9 +62,14 @@ func (a *Adapter) homes() []string {
 func (a *Adapter) ID() session.Provider { return session.Claude }
 
 func (a *Adapter) Meta() provider.Meta {
-	return provider.Meta{Name: "Claude", Title: "Claude Code", Short: "CC", Source: "Claude Code: local project transcripts",
+	return provider.Meta{Title: "Claude Code", Short: "CC", Source: "Claude Code: local project transcripts",
 		DeleteScope: "Deletes its local transcript and subagent files."}
 }
+
+// projectsFolder is the folder of a Claude Code home that holds the
+// transcripts. Scan reads it, and Delete accepts only transcripts inside it,
+// so one name keeps the two the same.
+const projectsFolder = "projects"
 
 // Scan is called by one scan worker at a time; the source keeps its parse
 // cache between scans.
@@ -68,7 +77,7 @@ func (a *Adapter) Scan(ctx context.Context, now time.Time) provider.Result {
 	if a.files == nil {
 		var roots []string
 		for _, home := range a.homes() {
-			roots = append(roots, filepath.Join(home, "projects"))
+			roots = append(roots, filepath.Join(home, projectsFolder))
 		}
 		// Transcripts sit directly in each project folder; deeper folders hold
 		// subagent artifacts that are not separate sessions.

@@ -27,6 +27,14 @@ const (
 	Unknown   Status = "unknown"
 )
 
+// Values lists every provider, for the phone app's generated types.
+func (Provider) Values() []string { return []string{string(OpenCode), string(Codex), string(Claude)} }
+
+// Values lists every status, for the phone app's generated types.
+func (Status) Values() []string {
+	return []string{string(Waiting), string(Failed), string(Working), string(Completed), string(Idle), string(Unknown)}
+}
+
 type Session struct {
 	ID                string    `json:"id"`
 	Provider          Provider  `json:"provider"`

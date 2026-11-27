@@ -25,9 +25,9 @@ func standInOpenCode(t *testing.T) {
 	t.Setenv("PATH", tools+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-// fakeService answers the listing requests like OpenCode's local service and
+// fakeCLI answers the listing requests like OpenCode's local service and
 // records every request, so a test can prove no session was created.
-type fakeService struct {
+type fakeCLI struct {
 	providers, models string
 	down              bool
 	calls             []string
@@ -47,7 +47,7 @@ const serviceModels = `{"data":[
   {"id":"h1","providerID":"home","name":"","enabled":true,"variants":[]}
 ]}`
 
-func (f *fakeService) run(_ context.Context, name string, args ...string) ([]byte, error) {
+func (f *fakeCLI) run(_ context.Context, name string, args ...string) ([]byte, error) {
 	f.calls = append(f.calls, strings.Join(append([]string{name}, args...), " "))
 	if f.down {
 		return nil, fmt.Errorf("opencode: service unreachable")
@@ -72,11 +72,11 @@ func (f *fakeService) run(_ context.Context, name string, args ...string) ([]byt
 	return nil, fmt.Errorf("unexpected request %v", args)
 }
 
-func (f *fakeService) adapter() *Adapter {
+func (f *fakeCLI) adapter() *Adapter {
 	return &Adapter{Run: f.run}
 }
 
-func (f *fakeService) postCount() int {
+func (f *fakeCLI) postCount() int {
 	n := 0
 	for _, c := range f.calls {
 		if strings.Contains(c, " post ") {
@@ -88,7 +88,7 @@ func (f *fakeService) postCount() int {
 
 func TestConnectionsAreProfiles(t *testing.T) {
 	standInOpenCode(t)
-	f := &fakeService{providers: serviceProviders, models: serviceModels}
+	f := &fakeCLI{providers: serviceProviders, models: serviceModels}
 	profiles, err := f.adapter().StartProfiles(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestConnectionsAreProfiles(t *testing.T) {
 
 func TestStartCreatesTheSessionWithTheModel(t *testing.T) {
 	standInOpenCode(t)
-	f := &fakeService{providers: serviceProviders, models: serviceModels}
+	f := &fakeCLI{providers: serviceProviders, models: serviceModels}
 	dir := t.TempDir()
 	n := provider.NewSession{Directory: dir, Profile: "work", Model: "m1", Effort: "high"}
 	a := f.adapter()
@@ -165,7 +165,7 @@ func TestStartRefusesAnotherConnection(t *testing.T) {
 		"connection gone": {Directory: dir, Profile: "vanished", Model: "m1"},
 	}
 	for name, n := range cases {
-		f := &fakeService{providers: serviceProviders, models: serviceModels}
+		f := &fakeCLI{providers: serviceProviders, models: serviceModels}
 		if _, err := providertest.Start(context.Background(), f.adapter(), n); err == nil {
 			t.Errorf("%s: started", name)
 		}
@@ -174,7 +174,7 @@ func TestStartRefusesAnotherConnection(t *testing.T) {
 		}
 	}
 	// A connection the service cannot list is refused with the service's error.
-	down := &fakeService{down: true}
+	down := &fakeCLI{down: true}
 	if _, err := providertest.Start(context.Background(), down.adapter(), provider.NewSession{Directory: dir, Profile: "work", Model: "m1"}); err == nil || down.postCount() != 0 {
 		t.Fatalf("connection with the service down: %v, posts %d", err, down.postCount())
 	}
@@ -183,7 +183,7 @@ func TestStartRefusesAnotherConnection(t *testing.T) {
 func TestStartWithDefaultsRunsOpenCodeInTheFolder(t *testing.T) {
 	standInOpenCode(t)
 	dir := t.TempDir()
-	f := &fakeService{providers: serviceProviders, models: serviceModels}
+	f := &fakeCLI{providers: serviceProviders, models: serviceModels}
 	cmd, err := providertest.Start(context.Background(), f.adapter(), provider.NewSession{Directory: dir})
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestStartWithDefaultsRunsOpenCodeInTheFolder(t *testing.T) {
 		t.Fatalf("the default started through the API: %v", f.calls)
 	}
 	// OpenCode's default needs no connection, so it starts with the service down.
-	down := &fakeService{down: true}
+	down := &fakeCLI{down: true}
 	if _, err := providertest.Start(context.Background(), down.adapter(), provider.NewSession{Directory: dir}); err != nil {
 		t.Fatalf("default with the service down: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestStartWithDefaultsRunsOpenCodeInTheFolder(t *testing.T) {
 
 func TestMissingOpenCodeCommandCreatesNothing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	f := &fakeService{providers: serviceProviders, models: serviceModels}
+	f := &fakeCLI{providers: serviceProviders, models: serviceModels}
 	dir := t.TempDir()
 	if _, err := providertest.Start(context.Background(), f.adapter(), provider.NewSession{Directory: dir, Profile: "work", Model: "m1"}); err == nil || !strings.Contains(err.Error(), "cannot find its command opencode") {
 		t.Fatalf("missing command: %v", err)

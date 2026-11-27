@@ -17,6 +17,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// CachedEvidence is the evidence line of a session that comes from the index
+// alone, because its agent has not been scanned successfully yet. The demo
+// shows the same line.
+const CachedEvidence = "Cached history; awaiting a successful provider scan"
+
 // migrations[i] moves the index from schema version i to i+1. A released step
 // is never edited; a change to the index is a new step at the end.
 var migrations = []string{
@@ -223,7 +228,7 @@ func (s *Store) LoadWithWarnings() ([]session.Session, []string, error) {
 		}
 		item.ProjectID, item.Directory = id, path
 		item.Status, item.Cached = session.Unknown, true
-		item.Evidence = "Cached history; awaiting a successful provider scan"
+		item.Evidence = CachedEvidence
 		out = append(out, item)
 	}
 	return out, warnings, rows.Err()

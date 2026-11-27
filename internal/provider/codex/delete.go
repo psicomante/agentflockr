@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/psicomante/agentflockr/internal/provider"
@@ -112,7 +113,7 @@ func (a *Adapter) checkPath(path string) error {
 		return err
 	}
 	parts := strings.Split(rel, string(os.PathSeparator))
-	if len(parts) < 2 || (parts[0] != "sessions" && parts[0] != "archived_sessions") || filepath.Ext(target) != ".jsonl" {
+	if len(parts) < 2 || !slices.Contains(storageFolders, parts[0]) || filepath.Ext(target) != ".jsonl" {
 		return fmt.Errorf("transcript is outside the configured Codex session directories")
 	}
 	return nil

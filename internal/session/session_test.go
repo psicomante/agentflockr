@@ -20,7 +20,7 @@ func TestDisplayTextCannotInjectTerminalCommands(t *testing.T) {
 }
 
 func TestLinesKeepsLineBreaksOnly(t *testing.T) {
-	got := Lines("\n\x1b[31mnpm   test\x1b[0m\r\n\nrm -rf‮ build\n\n", 0)
+	got := Lines("\n\x1b[31mnpm   test\x1b[0m\r\n\nrm -rf\u202e build\n\n", 0)
 	if got != "npm test\n\nrm -rf build" {
 		t.Fatalf("lines: %q", got)
 	}

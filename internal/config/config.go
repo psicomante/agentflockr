@@ -39,6 +39,8 @@ type Settings struct {
 	RecentWindow Duration `toml:"recent-window"`
 	Codex        Agent    `toml:"codex"`
 	Claude       Claude   `toml:"claude"`
+	// Serve holds the phone app server's settings (REQ-CLI-011).
+	Serve Serve `toml:"serve"`
 }
 
 // Agent holds the settings of an agent read from its own folder.
@@ -83,6 +85,7 @@ func Default() Settings {
 		RecentWindow: D(tui.DefaultRecentWindow),
 		Codex:        Agent{StaleAfter: D(provider.DefaultStaleAfter)},
 		Claude:       Claude{StaleAfter: D(provider.DefaultStaleAfter)},
+		Serve:        Serve{Listen: DefaultListen},
 	}
 }
 
@@ -101,6 +104,9 @@ func (s Settings) Validate() error {
 		if a.staleAfter.Duration <= 0 {
 			return fmt.Errorf("%s.stale-after must be longer than 0s", a.name)
 		}
+	}
+	if err := s.Serve.validate(); err != nil {
+		return err
 	}
 	return s.Claude.validateProfiles()
 }

@@ -59,7 +59,11 @@ func (o *Adapter) StartProfiles(ctx context.Context) ([]provider.Profile, error)
 	// A missing command is found before anything is created: a connection
 	// start creates the session through the API first.
 	problem := ""
-	if _, err := exec.LookPath("opencode"); err != nil {
+	lookup := o.lookup
+	if lookup == nil {
+		lookup = exec.LookPath
+	}
+	if _, err := lookup("opencode"); err != nil {
 		problem = "cannot find its command opencode"
 	}
 	profiles := []provider.Profile{{ID: "", Name: "OpenCode default", Detail: "OpenCode chooses the model", Problem: problem}}

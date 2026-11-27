@@ -74,6 +74,8 @@ func (m *Model) render() string {
 		rows = strings.Split(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, text), "\n")
 	case m.mode == helping:
 		rows = m.overlay(m.helpBox(p))
+	case m.mode == inspecting:
+		rows = m.information(p)
 	case m.mode == diagnosing:
 		rows = m.overlay(m.diagnosticsBox(p))
 	case m.mode == confirmRemove || m.mode == confirmDelete || m.mode == moving:
@@ -403,9 +405,11 @@ func (m *Model) sessionDetails(p palette, s session.Session, width, height int) 
 		bottom = append(bottom, wrap(l, width, 2)...)
 	}
 	bottom = append(bottom, "", muted.Render("Session"), muted.Render(fit(session.Text(string(s.Provider)+" · "+s.ID, 200), width)))
+	// Session information stays behind i; the details keep room for activity.
+	bottom = append(bottom, "", muted.Render("i · session information"))
 	if len(top)+len(bottom)+1 > height {
 		// Short screens keep the facts and drop the section labels.
-		bottom = []string{"", muted.Render(fit(session.Text(s.Evidence, 300), width)), shortPath(s.Directory)}
+		bottom = []string{"", muted.Render(fit(session.Text(s.Evidence, 300), width)), shortPath(s.Directory), muted.Render("i · folder, worktree, branch and usage")}
 	}
 	// Sections flow from the top; the activity excerpt takes the room the
 	// facts below it leave, up to a readable paragraph.
@@ -480,10 +484,10 @@ func (m *Model) footer(p palette) string {
 		input.SetWidth(max(10, min(60, room-ansi.StringWidth(version)-ansi.StringWidth("↵ keep   esc cancel")-8)))
 		return m.spread(input.View()+"   "+hint, right)
 	}
-	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"tab", "projects"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"tab", "projects"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
 	switch {
 	case m.filter.project != "":
-		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"n", "new"}, {"esc", "back"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"n", "new"}, {"esc", "back"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
 	case m.projects:
 		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"n", "new"}, {"tab", "sessions"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
 	}
@@ -532,6 +536,7 @@ func (m *Model) helpBox(p palette) string {
 		{"x", "Remove from agentflockr; the agent keeps it"},
 		{"d", "Delete the session from its agent"},
 		{"r", "Refresh now"},
+		{"i", "Session folder, worktree, branch and usage"},
 		{"!", "Where agentflockr looks for sessions"},
 		{"q", "Quit"},
 	}

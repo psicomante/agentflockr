@@ -17,13 +17,13 @@ import (
 )
 
 type Snapshot struct {
-	Sessions  []session.Session `json:"sessions"`
-	Warnings  []string          `json:"warnings,omitempty"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	Sessions  []session.Session
+	Warnings  []string
+	UpdatedAt time.Time
 	// Generation counts the index changes the snapshot already reflects. A
 	// snapshot older than a completed change may still show deleted, removed
 	// or unmoved sessions, and must not replace newer state.
-	Generation uint64 `json:"-"`
+	Generation uint64
 }
 
 // Engine orders every refresh's index work with every change to the index,
@@ -46,6 +46,9 @@ type Engine struct {
 	// Run executes tmux and ps when looking for a session's pane; nil runs
 	// them for real. Tests substitute it.
 	Run provider.Runner
+	// Now is the clock a refresh reads; nil means time.Now. Tests set it so
+	// staleness and ordering do not depend on real time.
+	Now func() time.Time
 }
 
 // Open returns the command that brings a native session to the foreground:
@@ -213,6 +216,14 @@ func (e *Engine) Cached() (Snapshot, error) {
 	return Snapshot{Sessions: items, Generation: e.generation, Warnings: warnings}, err
 }
 
+// now is the time a refresh is stamped with.
+func (e *Engine) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
+	}
+	return time.Now()
+}
+
 // Scan runs every provider in parallel, records what they found, and returns
 // the whole index with live status for the sessions seen in this scan.
 //
@@ -228,7 +239,7 @@ func (e *Engine) Scan(ctx context.Context) Snapshot {
 	}
 	e.scanning.Lock()
 	defer e.scanning.Unlock()
-	now := time.Now()
+	now := e.now()
 	found := make(chan provider.Result, len(e.Providers))
 	for _, source := range e.Providers {
 		go func(source provider.Adapter) {

@@ -17,7 +17,6 @@ import (
 
 // Meta is the provider's display vocabulary.
 type Meta struct {
-	Name        string // short filter label, such as "Claude"
 	Title       string // product name, such as "Claude Code"
 	Short       string // two-letter table code
 	Source      string // diagnostics line describing where sessions come from
@@ -176,3 +175,25 @@ func RunCommand(ctx context.Context, c Command) ([]byte, error) {
 	}
 	return stdout.Bytes(), nil
 }
+
+// Errors an agent returns, wrapped, so the dashboard and the phone app can
+// tell them apart.
+var (
+	// ErrAnsweredElsewhere means the interaction is no longer pending.
+	ErrAnsweredElsewhere = errors.New("this was already answered elsewhere")
+	// ErrNotAnswerable means the interaction must be answered at the terminal.
+	ErrNotAnswerable = errors.New("answer at the terminal")
+	// ErrUnsupported means the provider or session cannot do this.
+	ErrUnsupported = errors.New("not supported for this session")
+	// ErrInvalid means a Response does not fit its interaction, or a
+	// message cannot be sent as it is.
+	ErrInvalid = errors.New("invalid request")
+	// ErrSessionGone means the provider no longer knows the session.
+	ErrSessionGone = errors.New("the session no longer exists")
+	// ErrUncertain means a request may or may not have taken effect; a
+	// retry with the same idempotency key finds out without repeating it.
+	ErrUncertain = errors.New("the request may not have arrived; retry with the same idempotency key")
+	// ErrInProgress means a request with the same idempotency key is still
+	// running.
+	ErrInProgress = errors.New("a request with this idempotency key is still in progress")
+)

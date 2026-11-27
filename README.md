@@ -32,6 +32,8 @@ first, so you can see which ones need you.
   only remove them from agentflockr.
 - **Create new sessions.** Start one from a project in the dashboard, choosing the agent,
   profile, model and effort.
+- **See where a session stands.** Its folder, worktree and branch, model and effort,
+  context used, rate limits and the files it changed, from what each agent records.
 - **Terminal first, macOS and Linux.** Not tied to an IDE or a MacBook notch.
 - **Calm by design.** One attention sort and evidence for every status, not a manager
   model or a wall of panes.
@@ -123,6 +125,7 @@ Use `/` to search by project, title, latest activity, folder or ID.
 | `x` | Remove the session or project from agentflockr |
 | `d` | Permanently delete the session's history |
 | `r` | Refresh now |
+| `i` | Show the session's folder, worktree, branch and usage |
 | `!` | Show where sessions are read from and any problems found |
 | `?` | Show all keys and explain the statuses |
 | `q` | Quit |
@@ -235,6 +238,7 @@ separate from the program and downloads a release from GitHub when you run it.
 | Project folders | Whether each exists, and the folders you browse when moving a project |
 | Running processes | `ps`, when you open a session and tmux has panes: the arguments of every process, matched against the session and then dropped |
 | tmux | The list of panes, at the same time |
+| Git | `git rev-parse`, `git symbolic-ref` and `git status` in a session's folder, read-only, for its information panel |
 | Clipboard | Only when you press `ctrl+v` in a text field (`pbpaste` on macOS; `xclip`, `xsel` or `wl-paste` on Linux) |
 
 It bounds what it reads from an agent: a transcript record up to 16 MiB, a

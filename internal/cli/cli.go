@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -43,7 +44,9 @@ type agent struct {
 // one row here. The --providers default and its messages come from this list.
 // Construction performs no I/O, so the demo builds them too, for their names.
 var agents = []agent{
-	{"opencode", func(options) (provider.Adapter, error) { return opencode.New(), nil }},
+	{"opencode", func(o options) (provider.Adapter, error) {
+		return opencode.New(), nil
+	}},
 	{"codex", func(o options) (provider.Adapter, error) {
 		if o.s.Codex.Home == "" && !o.demo {
 			return nil, missing("the Codex home", "--codex-home", "CODEX_HOME", "codex.home")
@@ -66,6 +69,17 @@ var agents = []agent{
 	}},
 }
 
+// The phone app's command-line wiring, filled by phone.go. Without the phone
+// app they stay nil and agentflockr is the dashboard alone.
+var (
+	// serveAdapter swaps an agent's adapter for the one a command such as
+	// serve uses, or returns it unchanged.
+	serveAdapter func(o options, a provider.Adapter) provider.Adapter
+	// serveFlags registers the phone commands' flags, so the help lists them,
+	// and returns what applies them over the settings once they are parsed.
+	serveFlags func(flags *flag.FlagSet, o *options, defaults config.Settings) func(set map[string]bool, s *config.Settings) error
+)
+
 // options is what one run of agentflockr was asked to do.
 type options struct {
 	// s holds the settings in effect, after every layer is applied.
@@ -81,6 +95,15 @@ type options struct {
 	demo         bool
 	version      bool
 	printConfig  bool
+	// command is the subcommand named first ("serve", "pair", "devices"), or
+	// empty for the dashboard; args are the positional arguments after it.
+	command string
+	args    []string
+	// opencodeUntested lets serve answer on an OpenCode release it was not
+	// tested with. It is a flag and a variable only, never a setting.
+	opencodeUntested bool
+	// home is the person's home folder, empty when there is none.
+	home string
 }
 
 // Main runs agentflockr with args and returns its exit status.
@@ -102,7 +125,15 @@ func exitCode(err error, stderr io.Writer) int {
 }
 
 func run(args []string, stdout, stderr io.Writer) error {
-	o, err := parseOptions(args, stderr)
+	// A first argument that is a command's name selects it; any other
+	// positional argument is refused with the rest (REQ-CLI-001).
+	name := ""
+	if len(args) > 0 {
+		if _, ok := findCommand(args[0]); ok {
+			name, args = args[0], args[1:]
+		}
+	}
+	o, err := parseOptions(name, args, stderr)
 	if errors.Is(err, flag.ErrHelp) {
 		return nil
 	}
@@ -113,6 +144,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stdout, "agentflockr "+buildinfo.Version)
 		return nil
 	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if c, ok := findCommand(name); ok && !o.printConfig {
+		return c.run(ctx, o, stdout, stderr)
+	}
 	providers, err := registry(o)
 	if err != nil {
 		return err
@@ -120,7 +156,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if o.printConfig {
 		return printSettings(stdout, o, providers)
 	}
+	return runDashboard(ctx, o, providers)
+}
+
+// runDashboard opens the index and the dashboard.
+func runDashboard(ctx context.Context, o options, providers provider.Registry) error {
 	engine := &app.Engine{Demo: o.demo, Providers: providers}
+	var err error
 	if !o.demo {
 		engine.Store, err = store.Open(filepath.Join(o.s.DataDir, "sessions.db"))
 		if err != nil {
@@ -132,8 +174,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
 	ui := tui.New(ctx, engine, tui.Options{Refresh: o.s.Refresh.Duration, RecentWindow: o.s.RecentWindow.Duration}, snapshot)
 	_, err = tea.NewProgram(ui, tea.WithContext(ctx)).Run()
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
@@ -146,9 +186,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 // each over the one before: built-in defaults, the settings file,
 // environment variables, flags. It returns flag.ErrHelp after printing
 // usage, and errReported after the flag package printed a parse error, both
-// to output.
-func parseOptions(args []string, output io.Writer) (options, error) {
-	var o options
+// to output. command is the subcommand the arguments belong to, or "".
+func parseOptions(command string, args []string, output io.Writer) (options, error) {
+	o := options{command: command}
 	var settingsFile, providers, dataDir, codexHome, claudeHome string
 	var refresh time.Duration
 	defaults := config.Default()
@@ -165,12 +205,23 @@ func parseOptions(args []string, output io.Writer) (options, error) {
 	flags.BoolVar(&o.printConfig, "print-config", false, "print the settings in effect, as a settings file, and exit")
 	flags.BoolVar(&o.demo, "demo", false, "show sample sessions without reading any agent data")
 	flags.BoolVar(&o.version, "version", false, "print the version and exit")
+	var applyServe func(set map[string]bool, s *config.Settings) error
+	if serveFlags != nil {
+		applyServe = serveFlags(flags, &o, defaults)
+	}
 	flags.Usage = func() {
 		fmt.Fprintln(flags.Output(), `agentflockr: keep an eye on your coding agents' sessions
 
 Usage:
-  agentflockr [flags]
-
+  agentflockr [flags]`)
+		// A build without the phone app has no commands.
+		if len(commands) > 0 {
+			fmt.Fprintln(flags.Output(), "  agentflockr COMMAND [flags]\n\nCommands:")
+			for _, c := range commands {
+				fmt.Fprintf(flags.Output(), "  %-10s %s\n", c.name, c.summary)
+			}
+		}
+		fmt.Fprintln(flags.Output(), `
 Settings can also be kept in the settings file, `+config.FileName+`, including
 some with no flag; --print-config shows them all. Flags win over environment
 variables, which win over the file.
@@ -178,20 +229,32 @@ variables, which win over the file.
 Flags:`)
 		flags.PrintDefaults()
 	}
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return options{}, err
+	// The flag package stops at the first positional argument; parse again
+	// after each so flags may follow a command's arguments, as in
+	// "install claude --claude-home DIR".
+	var positional []string
+	for rest := args; ; {
+		if err := flags.Parse(rest); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return options{}, err
+			}
+			return options{}, errReported
 		}
-		return options{}, errReported
+		if flags.NArg() == 0 {
+			break
+		}
+		positional = append(positional, flags.Arg(0))
+		rest = flags.Args()[1:]
 	}
 	if o.version {
 		return o, nil
 	}
-	if flags.NArg() != 0 {
-		return options{}, fmt.Errorf("unexpected arguments: %v", flags.Args())
-	}
 	set := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if err := checkArguments(command, positional); err != nil {
+		return options{}, err
+	}
+	o.args = positional
 	home, err := os.UserHomeDir()
 	if err != nil {
 		home = ""
@@ -209,6 +272,7 @@ Flags:`)
 		return options{}, err
 	}
 	o.found = found
+	o.home = home
 
 	// Environment variables, over the file.
 	s.DataDir = first(os.Getenv("AGENTFLOCKR_DATA_DIR"), s.DataDir)
@@ -219,6 +283,11 @@ Flags:`)
 	s.DataDir = first(dataDir, s.DataDir)
 	s.Codex.Home = first(codexHome, s.Codex.Home)
 	s.Claude.Home = first(claudeHome, s.Claude.Home)
+	if applyServe != nil {
+		if err := applyServe(set, &s); err != nil {
+			return options{}, err
+		}
+	}
 	if set["providers"] {
 		s.Providers = strings.Split(providers, ",")
 	}
@@ -336,6 +405,9 @@ func registry(o options) (provider.Registry, error) {
 		adapter, err := a.build(o)
 		if err != nil {
 			return nil, err
+		}
+		if serveAdapter != nil {
+			adapter = serveAdapter(o, adapter)
 		}
 		r = append(r, adapter)
 	}

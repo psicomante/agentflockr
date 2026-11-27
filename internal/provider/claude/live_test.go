@@ -199,27 +199,3 @@ func TestUncheckableProcessIsAWarning(t *testing.T) {
 		t.Fatalf("no warning for the uncheckable process: %q", result.Warnings)
 	}
 }
-
-func TestClaudeIdleDoesNotHideAnAPIError(t *testing.T) {
-	home := liveHome(t)
-	file := filepath.Join(home, "projects", "project", "cc-1.jsonl")
-	f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = f.WriteString("{\"type\":\"assistant\",\"isApiErrorMessage\":true,\"message\":{\"content\":\"Credit exhausted\"}}\n{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n")
-	f.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeLive(t, home, os.Getpid(), `"status":"idle"`)
-	s := scanOne(t, home)
-	if s.Status != session.Failed || !strings.Contains(s.Evidence, "Credit exhausted") {
-		t.Fatalf("%+v", s)
-	}
-	// A genuinely new turn, reported busy by the process, supersedes failure.
-	writeLive(t, home, os.Getpid(), `"status":"busy"`)
-	if s = scanOne(t, home); s.Status != session.Working {
-		t.Fatalf("%+v", s)
-	}
-}

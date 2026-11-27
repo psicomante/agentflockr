@@ -24,7 +24,7 @@ func isolate(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	for _, name := range []string{"AGENTFLOCKR_CONFIG", "XDG_CONFIG_HOME", "AGENTFLOCKR_DATA_DIR", "XDG_DATA_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR"} {
+	for _, name := range []string{"AGENTFLOCKR_CONFIG", "XDG_CONFIG_HOME", "AGENTFLOCKR_DATA_DIR", "XDG_DATA_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "AGENTFLOCKR_SERVE_LISTEN", "AGENTFLOCKR_PUBLIC_URL", "AGENTFLOCKR_OPENCODE_UNTESTED"} {
 		t.Setenv(name, "")
 	}
 	return home
@@ -46,7 +46,7 @@ func settingsFile(t *testing.T, home, text string) string {
 func parse(t *testing.T, args ...string) (options, string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	o, err := parseOptions(args, &out)
+	o, err := parseOptions("", args, &out)
 	return o, out.String(), err
 }
 
