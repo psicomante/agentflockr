@@ -22,6 +22,8 @@ type Adapter struct {
 	// lookup finds the opencode command; nil uses exec.LookPath. serve starts
 	// sessions over HTTP and does not need the command.
 	lookup func(string) (string, error)
+	// ids makes the message IDs of scheduled prompts.
+	ids messageIDs
 }
 
 func New() *Adapter { return &Adapter{} }

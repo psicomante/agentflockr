@@ -49,6 +49,16 @@ type Engine struct {
 	// Now is the clock a refresh reads; nil means time.Now. Tests set it so
 	// staleness and ordering do not depend on real time.
 	Now func() time.Time
+	// ScheduleDir is the folder scheduled prompts run in when they go
+	// through a profile rather than into a session. It is created when
+	// needed; empty refuses such runs.
+	ScheduleDir string
+
+	sched schedules
+	// seen is the status of each session the last scan saw, or nil before
+	// the first scan. Scheduled prompts read it: the index keeps no live
+	// status.
+	seen map[string]session.Status
 }
 
 // Open returns the command that brings a native session to the foreground:
@@ -292,6 +302,10 @@ func (e *Engine) Scan(ctx context.Context) Snapshot {
 	Sort(items)
 	checkFolders(items)
 	snap.Sessions = items
+	e.seen = make(map[string]session.Status, len(fresh))
+	for key, s := range fresh {
+		e.seen[key] = s.Status
+	}
 	return snap
 }
 

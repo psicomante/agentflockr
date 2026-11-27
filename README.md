@@ -34,6 +34,9 @@ first, so you can see which ones need you.
   profile, model and effort.
 - **See where a session stands.** Its folder, worktree and branch, model and effort,
   context used, rate limits and the files it changed, from what each agent records.
+- **Schedule a prompt.** Send a prompt you wrote to a session, or through an agent
+  profile, at an interval you set, while the dashboard runs: for example to keep a
+  subscription's usage window going. It never reads or acts on the answers.
 - **Terminal first, macOS and Linux.** Not tied to an IDE or a MacBook notch.
 - **Calm by design.** One attention sort and evidence for every status, not a manager
   model or a wall of panes.
@@ -121,6 +124,8 @@ Use `/` to search by project, title, latest activity, folder or ID.
 | `a` | Filter the list by agent |
 | `Esc` | Clear filters or leave a project |
 | `n` | Start a new session in the selected project |
+| `p` | Send a prompt to the session on a schedule |
+| `s` | List scheduled prompts: edit, pause, resume or delete them |
 | `m` | Update the project's folder after you've moved it |
 | `x` | Remove the session or project from agentflockr |
 | `d` | Permanently delete the session's history |
@@ -254,6 +259,8 @@ status file 1 MiB, a command's output 64 MiB.
 | OpenCode: deletes a session | `opencode api` | After you confirm with `d`, and not while a turn runs |
 | OpenCode: moves a session, or creates one | `opencode api` | When you open a session after moving its project; when you start one through a connection with a chosen model |
 | tmux focus | `select-window`, `select-pane`, then `attach-session` or `switch-client` | When you open a session already running in a pane |
+| Scheduled prompts | In the index | When you save, pause or delete one with `p` or `s` |
+| A scheduled prompt, sent | Claude Code: `claude --resume … --print`, or `--no-session-persistence --print` for a profile. Codex: `codex exec resume`, or `codex exec --ephemeral` for a profile. OpenCode: `opencode api`, which may switch the session to the chosen connection and model and switches it back after the turn. A profile's run happens in `scheduled-prompts` in the data folder. | At the interval you set (at least 15 minutes), only while the dashboard runs |
 
 The index holds what it needs to list sessions, including each one's title and
 an excerpt of its last reply (up to 600 characters). It keeps them after the

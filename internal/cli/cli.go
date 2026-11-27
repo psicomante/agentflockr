@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -159,9 +160,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 	return runDashboard(ctx, o, providers)
 }
 
+// scheduleFolder, inside the data folder, is where scheduled prompts run
+// when they go through a profile rather than into a session.
+const scheduleFolder = "scheduled-prompts"
+
 // runDashboard opens the index and the dashboard.
 func runDashboard(ctx context.Context, o options, providers provider.Registry) error {
-	engine := &app.Engine{Demo: o.demo, Providers: providers}
+	engine := &app.Engine{Demo: o.demo, Providers: providers, ScheduleDir: filepath.Join(o.s.DataDir, scheduleFolder)}
 	var err error
 	if !o.demo {
 		engine.Store, err = store.Open(filepath.Join(o.s.DataDir, "sessions.db"))
@@ -174,6 +179,13 @@ func runDashboard(ctx context.Context, o options, providers provider.Registry) e
 	if err != nil {
 		return err
 	}
+	// Scheduled prompts run while the dashboard is open. Quitting cancels a
+	// run in progress, and the index closes only once it has stopped.
+	schedules, stopSchedules := context.WithCancel(ctx)
+	var scheduler sync.WaitGroup
+	scheduler.Go(func() { engine.RunSchedules(schedules) })
+	defer scheduler.Wait()
+	defer stopSchedules()
 	ui := tui.New(ctx, engine, tui.Options{Refresh: o.s.Refresh.Duration, RecentWindow: o.s.RecentWindow.Duration}, snapshot)
 	_, err = tea.NewProgram(ui, tea.WithContext(ctx)).Run()
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {

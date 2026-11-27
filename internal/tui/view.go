@@ -18,12 +18,13 @@ import (
 // Screen geometry, shared by rendering and mouse hit-testing. Every line
 // keeps a one-column margin on both sides.
 const (
-	margin       = 1
-	brand        = "agentflockr"
-	sessionsTabX = margin + len(brand) + 3
-	projectsTabX = sessionsTabX + len("Sessions") + 2
-	minWidth     = 50
-	minHeight    = 12
+	margin        = 1
+	brand         = "agentflockr"
+	sessionsTabX  = margin + len(brand) + 3
+	projectsTabX  = sessionsTabX + len("Sessions") + 2
+	schedulesTabX = projectsTabX + len("Projects") + 2
+	minWidth      = 50
+	minHeight     = 12
 )
 
 // layout places the list and the details. Wide screens show the details
@@ -82,6 +83,10 @@ func (m *Model) render() string {
 		rows = m.overlay(m.changeBox(p))
 	case m.mode == startingNew:
 		rows = m.overlay(m.startBox(p))
+	case m.mode == scheduling:
+		rows = m.overlay(m.scheduleBox(p))
+	case m.mode == confirmUnschedule:
+		rows = m.overlay(m.unscheduleBox(p))
 	default:
 		rows = m.dashboard(p)
 	}
@@ -144,7 +149,7 @@ func (m *Model) header(p palette) string {
 		return plain.fg(p.muted, name)
 	}
 	left := lipgloss.NewStyle().Foreground(p.accent).Bold(true).Render(brand) + "   " +
-		tab("Sessions", !m.projects) + "  " + tab("Projects", m.projects)
+		tab("Sessions", !m.projects && !m.scheduled) + "  " + tab("Projects", m.projects && !m.scheduled) + "  " + tab("Schedules", m.scheduled)
 	need, busy := 0, 0
 	for _, s := range m.snapshot.Sessions {
 		if !s.Root() {
@@ -175,6 +180,9 @@ func (m *Model) header(p palette) string {
 
 func (m *Model) contextLine(p palette) string {
 	plain := paint{p: p}
+	if m.scheduled {
+		return m.scheduleContext(p)
+	}
 	crumbs := []string{m.agentLabel()}
 	if m.filter.project != "" {
 		for _, s := range m.snapshot.Sessions {
@@ -226,6 +234,9 @@ func (m *Model) contextLine(p palette) string {
 }
 
 func (m *Model) list(p palette, l layout) []string {
+	if m.scheduled {
+		return m.scheduleRows(p, l)
+	}
 	out := make([]string, 0, l.listHeight)
 	if len(m.items) == 0 {
 		for _, text := range wrap(m.emptyText(), l.listWidth-2, l.listHeight) {
@@ -323,12 +334,15 @@ func (m *Model) scrollbar(p palette, height int) []string {
 	track := lipgloss.NewStyle().Foreground(p.faint).Render("│")
 	thumb := lipgloss.NewStyle().Foreground(p.muted).Render("┃")
 	bar := make([]string, height)
-	total := len(m.lines)
+	total, offset := len(m.lines), m.offset
+	if m.scheduled {
+		total, offset = len(m.schedList), m.schedOffset
+	}
 	size, start := height, 0
 	if total > height && height > 0 {
 		size = max(1, height*height/total)
-		start = min(height-size, m.offset*height/total)
-		if m.offset+height >= total {
+		start = min(height-size, offset*height/total)
+		if offset+height >= total {
 			start = height - size
 		}
 	}
@@ -345,6 +359,8 @@ func (m *Model) details(p palette, width, height int) []string {
 	it, ok := m.selected()
 	var lines []string
 	switch {
+	case m.scheduled:
+		lines = m.scheduleDetails(p, width, height)
 	case !ok:
 		lines = []string{lipgloss.NewStyle().Foreground(p.muted).Render("Select a session to see its details.")}
 	case it.project:
@@ -377,6 +393,17 @@ func (m *Model) sessionDetails(p palette, s session.Session, width, height int) 
 			connection = "unavailable"
 		}
 		top = append(top, muted.Render("Current connection · not historical"), fit(session.Text(connection, 200), width), "")
+	}
+	if sc, ok := m.schedules[s.Key()]; ok {
+		style := lipgloss.NewStyle()
+		if sc.LastError != "" {
+			style = style.Foreground(p.waiting)
+		}
+		top = append(top, muted.Render("Scheduled prompt · p to change"))
+		for _, l := range wrap(scheduleStatus(sc, m.ago), width, 3) {
+			top = append(top, style.Render(l))
+		}
+		top = append(top, "")
 	}
 	activity := m.activity(s)
 	heading := "Latest activity"
@@ -454,6 +481,9 @@ func (m *Model) projectDetails(p palette, it item, width, height int) []string {
 // brief is the two-line summary of the selection on screens too narrow for
 // the details pane.
 func (m *Model) brief(p palette, width int) []string {
+	if m.scheduled {
+		return m.scheduleBrief(p, width)
+	}
 	it, ok := m.selected()
 	if !ok {
 		return []string{"", ""}
@@ -484,8 +514,10 @@ func (m *Model) footer(p palette) string {
 		input.SetWidth(max(10, min(60, room-ansi.StringWidth(version)-ansi.StringWidth("↵ keep   esc cancel")-8)))
 		return m.spread(input.View()+"   "+hint, right)
 	}
-	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"tab", "projects"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"tab", "projects"}, {"s", "schedules"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
 	switch {
+	case m.scheduled:
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "edit"}, {"space", "pause"}, {"d", "delete"}, {"n", "new on a profile"}, {"s", "back"}, {"?", "help"}, {"q", "quit"}}
 	case m.filter.project != "":
 		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"n", "new"}, {"esc", "back"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
 	case m.projects:
@@ -532,6 +564,8 @@ func (m *Model) helpBox(p palette) string {
 		{"a", "Show one agent at a time"},
 		{"Esc", "Clear filters, or leave a project"},
 		{"n", "Start a new session in this project"},
+		{"p", "Send a prompt to the session on a schedule"},
+		{"s", "Scheduled prompts: edit, pause, resume, delete"},
 		{"m", "Move the project to a new folder"},
 		{"x", "Remove from agentflockr; the agent keeps it"},
 		{"d", "Delete the session from its agent"},
@@ -581,6 +615,29 @@ func (m *Model) diagnosticsBox(p palette) string {
 		body = append(body, lipgloss.NewStyle().Foreground(p.waiting).Render("! ")+session.Text(w, 300))
 	}
 	return m.box(p, "Diagnostics", p.accent, body, lipgloss.NewStyle().Foreground(p.muted).Render("esc to close"))
+}
+
+// scheduleContext is the context line of the Schedules view.
+func (m *Model) scheduleContext(p palette) string {
+	plain := paint{p: p}
+	left := plain.fg(p.muted, "Scheduled prompts")
+	if m.busy != "" {
+		left += plain.fg(p.muted, "   "+m.busy)
+	}
+	if m.notice != "" {
+		return m.spread(left, plain.fg(p.waiting, session.Text(m.notice, 200)))
+	}
+	paused := 0
+	for _, sc := range m.schedList {
+		if sc.Paused {
+			paused++
+		}
+	}
+	right := plural(len(m.schedList), "scheduled prompt")
+	if paused > 0 {
+		right += fmt.Sprintf(" · %d paused", paused)
+	}
+	return m.spread(left, plain.fg(p.muted, right))
 }
 
 func needYou(n int) string {

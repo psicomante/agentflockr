@@ -197,3 +197,7 @@ var (
 	// running.
 	ErrInProgress = errors.New("a request with this idempotency key is still in progress")
 )
+
+// MaxMessage bounds, in runes, a message written to a session: a scheduled
+// prompt or one sent from a phone.
+const MaxMessage = 8000

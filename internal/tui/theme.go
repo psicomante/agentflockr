@@ -79,6 +79,8 @@ func (m *Model) styleInput() {
 	s.Cursor.Color = p.accent
 	m.input.SetStyles(s)
 	m.path.SetStyles(s)
+	m.schedule.prompt.SetStyles(s)
+	m.schedule.every.SetStyles(s)
 }
 
 // paint renders text in a foreground color, on the selection background when

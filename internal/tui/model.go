@@ -27,6 +27,8 @@ const (
 	moving
 	startingNew
 	inspecting
+	scheduling
+	confirmUnschedule
 )
 
 type scanMsg app.Snapshot
@@ -116,6 +118,20 @@ type Model struct {
 	// kept across forms, so a reply from a closed form never matches a new one.
 	start    startForm
 	startSeq uint64
+
+	// The Scheduled prompt form, the sequence of its reads, and the saved
+	// schedules by key, for the details pane.
+	schedule    scheduleForm
+	scheduleSeq uint64
+	schedules   map[string]app.Schedule
+	// The Schedules view: whether it is shown, its rows in display order,
+	// the selected row, the first row on screen, and the row a delete
+	// confirmation acts on.
+	scheduled   bool
+	schedList   []app.Schedule
+	schedCursor int
+	schedOffset int
+	schedTarget app.Schedule
 }
 
 func New(ctx context.Context, engine *app.Engine, options Options, snapshot app.Snapshot) *Model {
@@ -141,13 +157,14 @@ func New(ctx context.Context, engine *app.Engine, options Options, snapshot app.
 		m.notice = "Could not read the saved view: " + err.Error()
 	}
 	m.projects = view == "projects"
+	m.scheduled = view == "schedules"
 	m.rebuild()
 	return m
 }
 
 func (m *Model) Init() tea.Cmd {
 	m.scanning = true
-	return tea.Batch(tea.RequestBackgroundColor, m.scan(), m.tick(), m.preview())
+	return tea.Batch(tea.RequestBackgroundColor, m.scan(), m.tick(), m.preview(), m.loadSchedules())
 }
 
 func (m *Model) scan() tea.Cmd {
@@ -219,6 +236,10 @@ func (m *Model) ensureVisible() {
 }
 
 func (m *Model) move(delta int) tea.Cmd {
+	if m.scheduled {
+		m.moveSchedule(delta)
+		return nil
+	}
 	if len(m.items) == 0 {
 		return nil
 	}
@@ -229,6 +250,7 @@ func (m *Model) move(delta int) tea.Cmd {
 
 func (m *Model) setProjects(projects bool) tea.Cmd {
 	m.projects = projects
+	m.scheduled = false
 	m.filter.project = ""
 	m.cursor, m.offset = 0, 0
 	m.rebuild()
@@ -325,7 +347,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.rebuild()
-		return m, m.preview()
+		// Schedules change when a run ends, in this process or in serve.
+		return m, tea.Batch(m.preview(), m.loadSchedules())
+	case schedulesMsg:
+		m.applySchedules(msg)
+		return m, nil
+	case connectionsMsg:
+		m.applyConnections(msg)
+		return m, nil
+	case scheduleProfilesMsg:
+		return m, m.applyScheduleProfiles(msg)
+	case scheduleCatalogMsg:
+		m.applyScheduleCatalog(msg)
+		return m, nil
+	case scheduleSavedMsg:
+		return m, m.finishSchedule(msg)
 	case startProfilesMsg:
 		return m, m.applyStartProfiles(msg)
 	case startCatalogMsg:
@@ -468,12 +504,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.updateMove(msg)
 		case startingNew:
 			return m, m.updateStart(msg)
+		case scheduling:
+			return m, m.updateSchedule(msg)
+		case confirmUnschedule:
+			return m, m.updateUnschedule(msg)
 		case helping, diagnosing:
 			switch msg.String() {
 			case "esc", "q", "?", "!", "enter":
 				m.mode = browsing
 			}
 			return m, nil
+		}
+		if m.scheduled {
+			return m, m.updateSchedules(msg)
 		}
 		return m, m.updateBrowse(msg)
 	}
@@ -484,6 +527,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input, cmd = m.input.Update(msg)
 	case m.mode == moving && !m.folders.active:
 		m.path, cmd = m.path.Update(msg)
+	case m.mode == scheduling && m.schedule.current() == schedPrompt:
+		m.schedule.prompt, cmd = m.schedule.prompt.Update(msg)
+	case m.mode == scheduling && m.schedule.current() == schedEvery:
+		m.schedule.every, cmd = m.schedule.every.Update(msg)
 	}
 	return m, cmd
 }
@@ -550,6 +597,10 @@ func (m *Model) updateBrowse(msg tea.KeyPressMsg) tea.Cmd {
 		return m.beginChange(moving)
 	case "n":
 		return m.beginStart()
+	case "p":
+		return m.beginSchedule()
+	case "s":
+		return m.setScheduled(true)
 	case "x":
 		return m.beginChange(confirmRemove)
 	case "d", "delete":
@@ -620,10 +671,18 @@ func (m *Model) click(x, y int) tea.Cmd {
 	l := m.layout()
 	if y == 0 {
 		switch {
-		case x >= sessionsTabX && x < sessionsTabX+len("Sessions") && m.projects:
+		case x >= sessionsTabX && x < sessionsTabX+len("Sessions") && (m.projects || m.scheduled):
 			return m.setProjects(false)
-		case x >= projectsTabX && x < projectsTabX+len("Projects") && !m.projects:
+		case x >= projectsTabX && x < projectsTabX+len("Projects") && (!m.projects || m.scheduled):
 			return m.setProjects(true)
+		case x >= schedulesTabX && x < schedulesTabX+len("Schedules") && !m.scheduled:
+			return m.setScheduled(true)
+		}
+		return nil
+	}
+	if m.scheduled {
+		if x < margin+l.listWidth {
+			m.clickSchedule(y)
 		}
 		return nil
 	}
