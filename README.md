@@ -131,6 +131,7 @@ Use `/` to search by project, title, latest activity, folder or ID.
 | `d` | Permanently delete the session's history |
 | `r` | Refresh now |
 | `i` | Show the session's folder, worktree, branch and usage |
+| `,` | Settings: see and change the theme, refresh, agents and folders |
 | `!` | Show where sessions are read from and any problems found |
 | `?` | Show all keys and explain the statuses |
 | `q` | Quit |
@@ -193,6 +194,15 @@ must be a name on `PATH`, an absolute path or a path starting with `~/`.
 
 `agentflockr --print-config` prints the current settings as TOML. You can
 copy its output into the settings file.
+
+Press `,` in the dashboard to see the settings, where each value comes from,
+and to change them. A change is saved in the settings file, on its own line,
+leaving your comments and the rest of the file as they were; `x` puts a
+setting back to its default. The theme, `refresh` and `recent-window` apply
+at once; the rest at the next start. Choose a theme there too: Default,
+which follows your terminal, Tokyo Night, Tokyo Night Day, Catppuccin
+Mocha, Catppuccin Latte, Gruvbox Dark or Gruvbox Light, or set
+`theme = "gruvbox-dark"` in the file.
 
 Flags override environment variables, which override the file. If a setting
 is misspelled or invalid, agentflockr stops and tells you which one.
@@ -261,12 +271,14 @@ status file 1 MiB, a command's output 64 MiB.
 | tmux focus | `select-window`, `select-pane`, then `attach-session` or `switch-client` | When you open a session already running in a pane |
 | Scheduled prompts | In the index | When you save, pause or delete one with `p` or `s` |
 | A scheduled prompt, sent | Claude Code: `claude --resume … --print`, or `--no-session-persistence --print` for a profile. Codex: `codex exec resume`, or `codex exec --ephemeral` for a profile. OpenCode: `opencode api`, which may switch the session to the chosen connection and model and switches it back after the turn. A profile's run happens in `scheduled-prompts` in the data folder. | At the interval you set (at least 15 minutes), only while the dashboard runs |
+| The settings file | One setting's line in `agentflockr.toml`, or the file itself if there is none (`0600`, in a `0700` folder) | When you save or reset a setting with `,`; never in `--demo` |
 
 The index holds what it needs to list sessions, including each one's title and
 an excerpt of its last reply (up to 600 characters). It keeps them after the
 agent's own copy is gone, until you delete or remove the session from
-agentflockr. It never writes the settings file, a log or anything in the
-folder you start it from.
+agentflockr. It writes the settings file only when you save a setting from
+the dashboard, and never writes a log or anything in the folder you start it
+from.
 
 Two settings of the terminal library can write files when you set them:
 `TEA_TRACE=PATH` appends a debug trace to PATH, and `TEA_DEBUG=1` writes
@@ -289,7 +301,6 @@ but nothing uses to connect. The last prints nothing.
 - **Phone notifications and short replies.** Through `agentflockr serve`, over your own
   Tailscale network, with no account or relay.
 - **Sound alerts.** When a session starts waiting or finishes.
-- **More themes.** Beyond the light and dark palettes that follow your terminal.
 - **More agents.** Chosen by demand.
 
 ## Alternatives

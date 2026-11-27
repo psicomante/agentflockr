@@ -95,6 +95,7 @@ func TestDefaultPathFollowsXDG(t *testing.T) {
 // What --print-config writes can be read back as a settings file.
 func TestEncodedSettingsReadBack(t *testing.T) {
 	s := Default()
+	s.Theme = "gruvbox-light"
 	s.Providers = []string{"claude"}
 	s.Codex.StaleAfter = D(10 * time.Minute)
 	s.Claude.Profiles = []ClaudeProfile{
@@ -106,9 +107,25 @@ func TestEncodedSettingsReadBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	back, _, err := Load(write(t, string(data)), true)
-	if err != nil || back.Codex != s.Codex || back.Refresh != s.Refresh || strings.Join(back.Providers, ",") != "claude" ||
+	if err != nil || back.Theme != s.Theme || back.Codex != s.Codex || back.Refresh != s.Refresh || strings.Join(back.Providers, ",") != "claude" ||
 		!reflect.DeepEqual(back.Claude.Profiles, s.Claude.Profiles) {
 		t.Fatalf("got %+v %v from:\n%s", back, err, data)
+	}
+}
+
+// TestThemeIsValidated covers REQ-CLI-016: the theme defaults to Default,
+// and a theme the dashboard does not have stops startup with the choices.
+func TestThemeIsValidated(t *testing.T) {
+	if got := Default().Theme; got != "default" {
+		t.Fatalf("default theme %q, want default", got)
+	}
+	if s, _, err := Load(write(t, `theme = "tokyo-night"`), true); err != nil || s.Theme != "tokyo-night" {
+		t.Fatalf("got %q %v", s.Theme, err)
+	}
+	_, _, err := Load(write(t, `theme = "tokio-night"`), true)
+	want := "theme must be one of default, tokyo-night, tokyo-night-day, catppuccin-mocha, catppuccin-latte, gruvbox-dark, gruvbox-light"
+	if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(err.Error(), FileName) {
+		t.Fatalf("got %v, want %q", err, want)
 	}
 }
 

@@ -57,6 +57,11 @@ func (m *Model) View() tea.View {
 	v := tea.NewView(m.render())
 	v.AltScreen = true
 	v.WindowTitle = "agentflockr"
+	// A named theme asks the terminal to use its background and text color;
+	// Bubble Tea gives the terminal its own back when the theme is left and
+	// when the program releases the terminal. Default leaves both nil.
+	p := m.palette()
+	v.BackgroundColor, v.ForegroundColor = p.background, p.text
 	if m.mode == browsing || m.mode == searching {
 		// Mouse capture gives wheel scrolling, clicks and the details pane's
 		// own selection (select.go); most terminals still select anywhere
@@ -67,7 +72,7 @@ func (m *Model) View() tea.View {
 }
 
 func (m *Model) render() string {
-	p := paletteFor(m.dark)
+	p := m.palette()
 	var rows []string
 	switch {
 	case m.width < minWidth || m.height < minHeight:
@@ -87,6 +92,10 @@ func (m *Model) render() string {
 		rows = m.overlay(m.scheduleBox(p))
 	case m.mode == confirmUnschedule:
 		rows = m.overlay(m.unscheduleBox(p))
+	case m.mode == editingSetting:
+		rows = m.overlay(m.settingBox(p))
+	case m.mode == confirmReset:
+		rows = m.overlay(m.resetBox(p))
 	default:
 		rows = m.dashboard(p)
 	}
@@ -148,8 +157,13 @@ func (m *Model) header(p palette) string {
 		}
 		return plain.fg(p.muted, name)
 	}
-	left := lipgloss.NewStyle().Foreground(p.accent).Bold(true).Render(brand) + "   " +
-		tab("Sessions", !m.projects && !m.scheduled) + "  " + tab("Projects", m.projects && !m.scheduled) + "  " + tab("Schedules", m.scheduled)
+	tabs := tab("Sessions", !m.projects && !m.scheduled) + "  " + tab("Projects", m.projects && !m.scheduled) + "  " + tab("Schedules", m.scheduled)
+	if m.settingsShown {
+		// Four tabs do not fit the narrowest screen, so Settings is not one;
+		// while it is shown, it is the only one.
+		tabs = tab("Settings", true)
+	}
+	left := lipgloss.NewStyle().Foreground(p.accent).Bold(true).Render(brand) + "   " + tabs
 	need, busy := 0, 0
 	for _, s := range m.snapshot.Sessions {
 		if !s.Root() {
@@ -180,6 +194,9 @@ func (m *Model) header(p palette) string {
 
 func (m *Model) contextLine(p palette) string {
 	plain := paint{p: p}
+	if m.settingsShown {
+		return m.settingContext(p)
+	}
 	if m.scheduled {
 		return m.scheduleContext(p)
 	}
@@ -234,6 +251,9 @@ func (m *Model) contextLine(p palette) string {
 }
 
 func (m *Model) list(p palette, l layout) []string {
+	if m.settingsShown {
+		return m.settingRows(p, l)
+	}
 	if m.scheduled {
 		return m.scheduleRows(p, l)
 	}
@@ -335,7 +355,10 @@ func (m *Model) scrollbar(p palette, height int) []string {
 	thumb := lipgloss.NewStyle().Foreground(p.muted).Render("┃")
 	bar := make([]string, height)
 	total, offset := len(m.lines), m.offset
-	if m.scheduled {
+	switch {
+	case m.settingsShown:
+		total, offset = len(m.setRows), m.setOffset
+	case m.scheduled:
 		total, offset = len(m.schedList), m.schedOffset
 	}
 	size, start := height, 0
@@ -359,6 +382,8 @@ func (m *Model) details(p palette, width, height int) []string {
 	it, ok := m.selected()
 	var lines []string
 	switch {
+	case m.settingsShown:
+		lines = m.settingDetails(p, width, height)
 	case m.scheduled:
 		lines = m.scheduleDetails(p, width, height)
 	case !ok:
@@ -481,6 +506,9 @@ func (m *Model) projectDetails(p palette, it item, width, height int) []string {
 // brief is the two-line summary of the selection on screens too narrow for
 // the details pane.
 func (m *Model) brief(p palette, width int) []string {
+	if m.settingsShown {
+		return m.settingBrief(p, width)
+	}
 	if m.scheduled {
 		return m.scheduleBrief(p, width)
 	}
@@ -514,14 +542,18 @@ func (m *Model) footer(p palette) string {
 		input.SetWidth(max(10, min(60, room-ansi.StringWidth(version)-ansi.StringWidth("↵ keep   esc cancel")-8)))
 		return m.spread(input.View()+"   "+hint, right)
 	}
-	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"tab", "projects"}, {"s", "schedules"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+	// "," sits just before "?" in each list, so it is the first hint
+	// dropped when the footer is narrow.
+	keys := [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"tab", "projects"}, {"s", "schedules"}, {"/", "search"}, {"a", "agent"}, {",", "settings"}, {"?", "help"}, {"q", "quit"}}
 	switch {
+	case m.settingsShown:
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "edit"}, {"x", "reset"}, {",", "back"}, {"?", "help"}, {"q", "quit"}}
 	case m.scheduled:
-		keys = [][2]string{{"↑↓", "move"}, {"↵", "edit"}, {"space", "pause"}, {"d", "delete"}, {"n", "new on a profile"}, {"s", "back"}, {"?", "help"}, {"q", "quit"}}
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "edit"}, {"space", "pause"}, {"d", "delete"}, {"n", "new on a profile"}, {"s", "back"}, {",", "settings"}, {"?", "help"}, {"q", "quit"}}
 	case m.filter.project != "":
-		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"n", "new"}, {"esc", "back"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"i", "info"}, {"n", "new"}, {"esc", "back"}, {"/", "search"}, {"a", "agent"}, {",", "settings"}, {"?", "help"}, {"q", "quit"}}
 	case m.projects:
-		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"n", "new"}, {"tab", "sessions"}, {"/", "search"}, {"a", "agent"}, {"?", "help"}, {"q", "quit"}}
+		keys = [][2]string{{"↑↓", "move"}, {"↵", "open"}, {"n", "new"}, {"tab", "sessions"}, {"/", "search"}, {"a", "agent"}, {",", "settings"}, {"?", "help"}, {"q", "quit"}}
 	}
 	left := hints(p, keys)
 	// Drop hints from the middle, keeping navigation, help and quit.
@@ -566,6 +598,7 @@ func (m *Model) helpBox(p palette) string {
 		{"n", "Start a new session in this project"},
 		{"p", "Send a prompt to the session on a schedule"},
 		{"s", "Scheduled prompts: edit, pause, resume, delete"},
+		{",", "Settings: theme, refresh, agents and folders"},
 		{"m", "Move the project to a new folder"},
 		{"x", "Remove from agentflockr; the agent keeps it"},
 		{"d", "Delete the session from its agent"},

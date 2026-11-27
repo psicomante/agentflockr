@@ -29,6 +29,8 @@ const (
 	inspecting
 	scheduling
 	confirmUnschedule
+	editingSetting
+	confirmReset
 )
 
 type scanMsg app.Snapshot
@@ -72,6 +74,18 @@ type Options struct {
 	// RecentWindow separates RECENT from EARLIER; zero means
 	// DefaultRecentWindow.
 	RecentWindow time.Duration
+	// Theme is the theme to start with, a Themes ID; empty means
+	// DefaultTheme.
+	Theme string
+	// Settings are the Settings view's rows, in display order.
+	Settings []Setting
+	// SettingsFile is the settings file's path, only shown.
+	SettingsFile string
+	// SaveSetting writes value under key in the settings file, or removes
+	// the key's line when reset is true, and returns the rows read back.
+	// The dashboard calls it off the update loop. Nil means nothing can be
+	// saved, as in demo mode.
+	SaveSetting func(key, value string, reset bool) ([]Setting, error)
 }
 
 type Model struct {
@@ -100,7 +114,8 @@ type Model struct {
 	opening       string // the agent being opened, while it has the terminal
 	viaTmux       bool   // the open moved to an existing tmux pane
 	previews      map[string]previewEntry
-	dark          bool
+	dark          bool   // the terminal's background is dark
+	theme         string // the theme on screen, a Themes ID
 	infos         map[string]provider.Info
 	infoPending   map[string]bool
 	infoSeq       uint64
@@ -132,6 +147,18 @@ type Model struct {
 	schedCursor int
 	schedOffset int
 	schedTarget app.Schedule
+
+	// The Settings view: whether it is shown over the other views, its
+	// rows, the selected row and the first on screen, the settings file
+	// shown above them, the save internal/cli gives (nil saves nothing),
+	// and the open editor.
+	settingsShown bool
+	setRows       []Setting
+	setCursor     int
+	setOffset     int
+	setFile       string
+	saveSetting   func(key, value string, reset bool) ([]Setting, error)
+	editor        settingEditor
 }
 
 func New(ctx context.Context, engine *app.Engine, options Options, snapshot app.Snapshot) *Model {
@@ -139,7 +166,8 @@ func New(ctx context.Context, engine *app.Engine, options Options, snapshot app.
 		options.RecentWindow = DefaultRecentWindow
 	}
 	m := &Model{ctx: ctx, engine: engine, interval: options.Refresh, recent: options.RecentWindow, now: time.Now, snapshot: snapshot,
-		width: 100, height: 30, previews: map[string]previewEntry{}, dark: true}
+		width: 100, height: 30, previews: map[string]previewEntry{}, dark: true, theme: options.Theme,
+		setRows: options.Settings, setFile: options.SettingsFile, saveSetting: options.SaveSetting}
 	m.input = textinput.New()
 	m.infos, m.infoPending = map[string]provider.Info{}, map[string]bool{}
 	m.input.CharLimit = 200
@@ -236,6 +264,10 @@ func (m *Model) ensureVisible() {
 }
 
 func (m *Model) move(delta int) tea.Cmd {
+	if m.settingsShown {
+		m.moveSetting(delta)
+		return nil
+	}
 	if m.scheduled {
 		m.moveSchedule(delta)
 		return nil
@@ -317,8 +349,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.BackgroundColorMsg:
-		m.dark = msg.IsDark()
-		m.styleInput()
+		// Under a named theme the terminal reports the theme's background,
+		// set by View, not its own; Default asks again when it returns.
+		if !m.namedTheme() {
+			m.dark = msg.IsDark()
+			m.styleInput()
+		}
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -362,6 +398,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case scheduleSavedMsg:
 		return m, m.finishSchedule(msg)
+	case settingSavedMsg:
+		return m, m.finishSetting(msg)
 	case startProfilesMsg:
 		return m, m.applyStartProfiles(msg)
 	case startCatalogMsg:
@@ -508,11 +546,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.updateSchedule(msg)
 		case confirmUnschedule:
 			return m, m.updateUnschedule(msg)
+		case editingSetting:
+			return m, m.updateSettingEditor(msg)
+		case confirmReset:
+			return m, m.updateReset(msg)
 		case helping, diagnosing:
 			switch msg.String() {
 			case "esc", "q", "?", "!", "enter":
 				m.mode = browsing
 			}
+			return m, nil
+		}
+		if m.settingsShown {
+			return m, m.updateSettings(msg)
+		}
+		if msg.String() == "," {
+			m.showSettings(true)
 			return m, nil
 		}
 		if m.scheduled {
@@ -531,6 +580,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.schedule.prompt, cmd = m.schedule.prompt.Update(msg)
 	case m.mode == scheduling && m.schedule.current() == schedEvery:
 		m.schedule.every, cmd = m.schedule.every.Update(msg)
+	case m.mode == editingSetting:
+		m.editor.input, cmd = m.editor.input.Update(msg)
 	}
 	return m, cmd
 }
@@ -669,6 +720,12 @@ func (m *Model) updateSearch(msg tea.KeyPressMsg) tea.Cmd {
 // click selects the list row or switches to the tab under the pointer.
 func (m *Model) click(x, y int) tea.Cmd {
 	l := m.layout()
+	if m.settingsShown {
+		if x < margin+l.listWidth {
+			m.clickSetting(y)
+		}
+		return nil
+	}
 	if y == 0 {
 		switch {
 		case x >= sessionsTabX && x < sessionsTabX+len("Sessions") && (m.projects || m.scheduled):

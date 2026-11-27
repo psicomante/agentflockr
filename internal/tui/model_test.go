@@ -397,7 +397,7 @@ func TestEveryScreenFitsTheTerminal(t *testing.T) {
 	long.Directory = "/" + strings.Repeat("deep/", 40) + "project"
 	sessions = append([]session.Session{long}, sessions...)
 	for _, size := range [][2]int{{30, 8}, {50, 12}, {60, 20}, {80, 24}, {109, 30}, {110, 16}, {132, 34}, {220, 60}} {
-		for _, keys := range [][]string{nil, {"tab"}, {"?"}, {"!"}, {"/", "x"}, {"x"}, {"d"}, {"m"}, {"m", "tab"}, {"tab", "x"}} {
+		for _, keys := range [][]string{nil, {"tab"}, {"?"}, {"!"}, {"/", "x"}, {"x"}, {"d"}, {"m"}, {"m", "tab"}, {"tab", "x"}, {","}, {",", "enter"}} {
 			m := newModel(t, sessions)
 			m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			for _, k := range keys {

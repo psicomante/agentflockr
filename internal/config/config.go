@@ -4,7 +4,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -28,6 +27,8 @@ const MinRefresh = time.Second
 // Settings is everything a person can set. Its TOML keys are the file's
 // keys; most settings are also flags, under the same name.
 type Settings struct {
+	// Theme is the dashboard's theme, a tui.Themes ID (REQ-DSH-020).
+	Theme string `toml:"theme"`
 	// Providers lists the agents to watch, in display order. Empty means
 	// every agent, in the default order.
 	Providers []string `toml:"providers,omitempty"`
@@ -81,6 +82,7 @@ const maxProfileName = 64
 // that uses it; this only gathers them.
 func Default() Settings {
 	return Settings{
+		Theme:        tui.DefaultTheme,
 		Refresh:      D(5 * time.Second),
 		RecentWindow: D(tui.DefaultRecentWindow),
 		Codex:        Agent{StaleAfter: D(provider.DefaultStaleAfter)},
@@ -91,6 +93,9 @@ func Default() Settings {
 
 // Validate refuses values no part of agentflockr can work with.
 func (s Settings) Validate() error {
+	if err := validateTheme(s.Theme); err != nil {
+		return err
+	}
 	if s.Refresh.Duration < MinRefresh {
 		return fmt.Errorf("refresh must be at least %v", MinRefresh)
 	}
@@ -109,6 +114,19 @@ func (s Settings) Validate() error {
 		return err
 	}
 	return s.Claude.validateProfiles()
+}
+
+// validateTheme refuses a theme the dashboard does not have, listing the
+// ones it does.
+func validateTheme(id string) error {
+	var ids []string
+	for _, t := range tui.Themes() {
+		if t.ID == id {
+			return nil
+		}
+		ids = append(ids, t.ID)
+	}
+	return fmt.Errorf("theme must be one of %s", strings.Join(ids, ", "))
 }
 
 // validateProfiles refuses a profile that could not start, naming it so the
@@ -187,14 +205,8 @@ func Load(path string, required bool) (s Settings, found bool, err error) {
 	if err != nil {
 		return s, false, fmt.Errorf("settings file: %w", err)
 	}
-	decoder := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields()
-	if err := decoder.Decode(&s); err != nil {
-		return s, true, describe(path, err)
-	}
-	if err := s.Validate(); err != nil {
-		return s, true, fmt.Errorf("%s: %w", path, err)
-	}
-	return s, true, nil
+	s, err = decode(path, data)
+	return s, true, err
 }
 
 // describe turns a decoding error into one line that names the file, and

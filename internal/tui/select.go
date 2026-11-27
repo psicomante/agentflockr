@@ -118,7 +118,7 @@ func (m *Model) selectedText() string {
 	if l.detailWidth == 0 {
 		return ""
 	}
-	lines := m.details(paletteFor(m.dark), l.detailWidth, l.listHeight)
+	lines := m.details(m.palette(), l.detailWidth, l.listHeight)
 	var out []string
 	for row, line := range lines {
 		a, b, ok := m.sel.span(row, l.detailWidth)

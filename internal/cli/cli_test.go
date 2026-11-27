@@ -316,7 +316,7 @@ func TestSettingsFileProblemsStopStartup(t *testing.T) {
 // settings file.
 func TestPrintConfigShowsTheSettingsInEffect(t *testing.T) {
 	home := isolate(t)
-	path := settingsFile(t, home, "[codex]\nstale-after = \"10m\"\n")
+	path := settingsFile(t, home, "theme = \"catppuccin-latte\"\n[codex]\nstale-after = \"10m\"\n")
 	var stdout, stderr bytes.Buffer
 	if code := Main([]string{"--print-config", "--providers", "codex"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr.String())
@@ -330,7 +330,7 @@ func TestPrintConfigShowsTheSettingsInEffect(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, _, err := config.Load(saved, true)
-	if err != nil || s.Codex.StaleAfter.Duration != 10*time.Minute || strings.Join(s.Providers, ",") != "codex" {
+	if err != nil || s.Theme != "catppuccin-latte" || s.Codex.StaleAfter.Duration != 10*time.Minute || strings.Join(s.Providers, ",") != "codex" {
 		t.Fatalf("the output does not read back: %+v %v\n%s", s, err, out)
 	}
 }

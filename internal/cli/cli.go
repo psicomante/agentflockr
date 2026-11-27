@@ -91,7 +91,11 @@ type options struct {
 	// CLAUDE_CONFIG_DIR is unset. Empty without a home folder.
 	claudeDefaultHome string
 	// settingsFile is the file read, or looked for; found says which.
+	// file holds the settings as that file alone gives them, before the
+	// environment and flags, and flagsSet the flags given by name.
 	settingsFile string
+	file         config.Settings
+	flagsSet     map[string]bool
 	found        bool
 	demo         bool
 	version      bool
@@ -186,7 +190,13 @@ func runDashboard(ctx context.Context, o options, providers provider.Registry) e
 	scheduler.Go(func() { engine.RunSchedules(schedules) })
 	defer scheduler.Wait()
 	defer stopSchedules()
-	ui := tui.New(ctx, engine, tui.Options{Refresh: o.s.Refresh.Duration, RecentWindow: o.s.RecentWindow.Duration}, snapshot)
+	options := tui.Options{Refresh: o.s.Refresh.Duration, RecentWindow: o.s.RecentWindow.Duration, Theme: o.s.Theme,
+		Settings: settingRows(o, o.file), SettingsFile: tildify(o.settingsFile, o.home)}
+	if !o.demo {
+		// Demo mode saves nothing; the dashboard changes settings for the run.
+		options.SaveSetting = o.saveSetting
+	}
+	ui := tui.New(ctx, engine, options, snapshot)
 	_, err = tea.NewProgram(ui, tea.WithContext(ctx)).Run()
 	if errors.Is(err, tea.ErrProgramKilled) && ctx.Err() != nil {
 		return nil
@@ -285,6 +295,8 @@ Flags:`)
 	}
 	o.found = found
 	o.home = home
+	o.file = s
+	o.flagsSet = set
 
 	// Environment variables, over the file.
 	s.DataDir = first(os.Getenv("AGENTFLOCKR_DATA_DIR"), s.DataDir)
